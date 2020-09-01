@@ -52,7 +52,7 @@ jobs:
       !(github.event_name == 'push'
         && contains(github.event.head_commit.message, '[skip ci]'))
       && !(github.event_name == 'pull_request'
-        && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name) 
+        && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name)
     runs-on: ubuntu-latest
     container: ubuntu:trusty
 
@@ -556,6 +556,9 @@ jobs:
 
       - name: Telegram Desktop build.
         if: env.ONLY_CACHE == 'false'
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
         run: |
           cd $REPO_NAME/Telegram
 
@@ -572,7 +575,10 @@ jobs:
           -D CMAKE_CXX_FLAGS="-s" \
           -D TDESKTOP_API_TEST=ON \
           -D DESKTOP_APP_USE_PACKAGED=OFF \
+          -D TDESKTOP_API_ID=${API_ID} \
+          -D TDESKTOP_API_HASH=${API_HASH} \
           -D DESKTOP_APP_DISABLE_CRASH_REPORTS=OFF \
+          -D TDESKTOP_DISABLE_REGISTER_CUSTOM_SCHEME=OFF \
           $DEFINE
 
           cd ../out/Debug
@@ -593,7 +599,6 @@ jobs:
           fi
 
       - name: Move artifact.
-        if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           cd $REPO_NAME/out/Debug/bin
           mkdir artifact
@@ -604,3 +609,18 @@ jobs:
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.REPO_NAME }}/out/Debug/bin/artifact/
+
+      - name: Install dependencies for Telegram uploader.
+        run: |
+          python3 -m pip install telethon cryptg
+
+      - name: Upload binary to Telegram.
+        env:
+          TELETHON_API_ID: ${{ secrets._API_ID }}
+          TELETHON_API_HASH: ${{ secrets.API_HASH }}
+          TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
+        run: >
+          python3 buildscripts/scripts/uploader.py
+          "-1001298881873"
+          "${{ env.REPO_NAME }}/artifact/${{ env.ARTIFACT_NAME }}"
+          "${{GITHUB_SHA}}: ${{ env.GITHUB_RUN_NUMBER}} #kotgram"
