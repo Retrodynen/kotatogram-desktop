@@ -52,7 +52,7 @@ jobs:
       !(github.event_name == 'push'
         && contains(github.event.head_commit.message, '[skip ci]'))
       && !(github.event_name == 'pull_request'
-        && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name) 
+        && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name)
     runs-on: ubuntu-latest
     container:
       image: ubuntu:trusty
@@ -70,7 +70,7 @@ jobs:
       QT: "5_12_8"
       OPENSSL_VER: "1_1_1"
       CMAKE_VER: "3.17.0"
-      UPLOAD_ARTIFACT: "false"
+      UPLOAD_ARTIFACT: "true"
       ONLY_CACHE: "false"
       MANUAL_CACHING: "1"
       DOC_PATH: "docs/building-cmake.md"
@@ -583,6 +583,8 @@ jobs:
         if: env.ONLY_CACHE == 'false'
         env:
           tg_owt_DIR: ${{ env.LibrariesPath }}/tg_owt/build
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
         run: |
           cd $REPO_NAME/Telegram
 
@@ -598,7 +600,8 @@ jobs:
           ./configure.sh \
           -GNinja \
           -DCMAKE_INSTALL_PREFIX=/usr \
-          -DTDESKTOP_API_TEST=ON \
+          -DTDESKTOP_API_ID=${API_ID} \
+          -DTDESKTOP_API_HASH=${API_HASH} \
           -DDESKTOP_APP_USE_PACKAGED_LAZY=ON \
           $DEFINE
 
@@ -650,3 +653,14 @@ jobs:
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.REPO_NAME }}/artifact/
+
+      - name: Upload binary to Telegram.
+        env:
+          TELETHON_API_ID: ${{ secrets._API_ID }}
+          TELETHON_API_HASH: ${{ secrets.API_HASH }}
+          TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
+        run: >
+          python3 buildscripts/scripts/uploader.py
+          "-1001298881873"
+          "${{ env.REPO_NAME }}/artifact/${{ env.ARTIFACT_NAME }}"
+          "${{GITHUB_SHA}}: ${{ env.GITHUB_RUN_NUMBER }} #kotgram"
