@@ -654,13 +654,13 @@ jobs:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.REPO_NAME }}/artifact/
 
-      - name: Upload binary to Telegram.
-        env:
-          TELETHON_API_ID: ${{ secrets._API_ID }}
-          TELETHON_API_HASH: ${{ secrets.API_HASH }}
-          TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
-        run: >
-          python3 buildscripts/scripts/uploader.py
-          "-1001298881873"
-          "${{ env.REPO_NAME }}/artifact/${{ env.ARTIFACT_NAME }}"
-          "${{GITHUB_SHA}}: ${{ env.GITHUB_RUN_NUMBER }} #kotgram"
+      # - name: Upload binary to Telegram.
+      #   env:
+      #     TELETHON_API_ID: ${{ secrets._API_ID }}
+      #     TELETHON_API_HASH: ${{ secrets.API_HASH }}
+      #     TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
+      #   run: >
+      #     python3 buildscripts/scripts/uploader.py
+      #     "-1001298881873"
+      #     "${{ env.REPO_NAME }}/artifact/${{ env.ARTIFACT_NAME }}"
+      #     "${{GITHUB_SHA}}: ${{ env.GITHUB_RUN_NUMBER }} #kotgram"
