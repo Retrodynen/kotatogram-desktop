@@ -584,7 +584,9 @@ jobs:
         env:
           tg_owt_DIR: ${{ env.LibrariesPath }}/tg_owt/build
           API_ID: ${{ secrets.API_ID }}
+          TDESKTOP_API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
+          TDESKTOP_API_HASH: ${{ secrets.API_HASH }}
         run: |
           cd $REPO_NAME/Telegram
 
