@@ -20,6 +20,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/filter_icons.h"
 #include "ui/wrap/vertical_layout_reorder.h"
 #include "ui/widgets/popup_menu.h"
+#include "ui/toast/toast.h"
 #include "boxes/confirm_box.h"
 #include "boxes/filters/edit_filter_box.h"
 #include "kotato/json_settings.h"
@@ -317,18 +318,18 @@ base::unique_qptr<Ui::SideBarButton> FiltersMenu::prepareButton(
 			}
 		}
 	});
-	if (id >= 0) {
-		raw->events(
-		) | rpl::filter([=](not_null<QEvent*> e) {
-			return e->type() == QEvent::ContextMenu;
-		}) | rpl::start_with_next([=] {
-			if (id){
-				showMenu(QCursor::pos(), id);
-			} else {
-				showAllMenu(QCursor::pos());
-			}
-		}, raw->lifetime());
-	}
+	raw->events(
+	) | rpl::filter([=](not_null<QEvent*> e) {
+		return e->type() == QEvent::ContextMenu;
+	}) | rpl::start_with_next([=] {
+		if (id == -1) {
+			showEditMenu(QCursor::pos());
+		} else if (id) {
+			showMenu(QCursor::pos(), id);
+		} else {
+			showAllMenu(QCursor::pos());
+		}
+	}, raw->lifetime());
 	return button;
 }
 
@@ -376,7 +377,41 @@ void FiltersMenu::showAllMenu(QPoint position) {
 			tr::ktg_filters_context_make_default(tr::now),
 			crl::guard(&_outer, [=] { setDefaultFilter(0); }));
 	}
+	_popupMenu->addAction(
+		tr::ktg_filters_hide_folder(tr::now),
+		crl::guard(&_outer, [=] {
+			cSetHideFilterAllChats(true);
+			Kotato::JsonSettings::Write();
+			_all = nullptr;
+			Ui::Toast::Show(Ui::Toast::Config{
+				.text = { tr::ktg_filters_hide_all_chats_toast(tr::now) },
+				.st = &st::windowArchiveToast,
+				.multiline = true,
+			});
+		}));
 	
+	_popupMenu->popup(position);
+}
+
+void FiltersMenu::showEditMenu(QPoint position) {
+	if (_popupMenu) {
+		_popupMenu = nullptr;
+		return;
+	}
+	_popupMenu = base::make_unique_q<Ui::PopupMenu>(_setup);
+	_popupMenu->addAction(
+		tr::ktg_filters_hide_button(tr::now),
+		crl::guard(&_outer, [=] {
+			cSetHideFilterEditButton(true);
+			Kotato::JsonSettings::Write();
+			_setup = nullptr;
+			Ui::Toast::Show(Ui::Toast::Config{
+				.text = { tr::ktg_filters_hide_edit_toast(tr::now) },
+				.st = &st::windowArchiveToast,
+				.multiline = true,
+			});
+		}));
+
 	_popupMenu->popup(position);
 }
 
@@ -402,21 +437,41 @@ void FiltersMenu::showRemoveBox(FilterId id) {
 
 void FiltersMenu::remove(FilterId id) {
 	const auto defaultFilterId = _session->session().account().defaultFilterId();
-	_session->session().data().chatsFilters().apply(MTP_updateDialogFilter(
-		MTP_flags(MTPDupdateDialogFilter::Flag(0)),
-		MTP_int(id),
-		MTPDialogFilter()));
-	_session->session().api().request(MTPmessages_UpdateDialogFilter(
-		MTP_flags(MTPmessages_UpdateDialogFilter::Flag(0)),
-		MTP_int(id),
-		MTPDialogFilter()
-	)).send();
+	const auto filters = &_session->session().data().chatsFilters();
+	const auto &list = filters->list();
+	const auto i = ranges::find(list, id, &Data::ChatFilter::id);
+	Assert(i != end(list));
+	bool needSave = false;
+	if (i->isLocal()) {
+		const auto account = &_session->session().account();
+		auto &localFolders = cRefLocalFolders();
+		const auto j = ranges::find_if(localFolders, [id, account](LocalFolder localFolder) {
+			return (id == localFolder.id
+				&& account->isCurrent(localFolder.ownerId));
+		});
+		filters->remove(id);
+		localFolders.erase(j);
+		needSave = true;
+	} else {
+		_session->session().data().chatsFilters().apply(MTP_updateDialogFilter(
+			MTP_flags(MTPDupdateDialogFilter::Flag(0)),
+			MTP_int(id),
+			MTPDialogFilter()));
+		_session->session().api().request(MTPmessages_UpdateDialogFilter(
+			MTP_flags(MTPmessages_UpdateDialogFilter::Flag(0)),
+			MTP_int(id),
+			MTPDialogFilter()
+		)).send();
+	}
 	if (id == defaultFilterId) {
+		needSave = true;
 		_session->session().account().setDefaultFilterId(0);
-		Kotato::JsonSettings::Write();
 		if (id == _session->activeChatsFilterCurrent()) {
 			_session->setActiveChatsFilter(0);
 		}
+	}
+	if (needSave) {
+		Kotato::JsonSettings::Write();
 	}
 }
 
@@ -447,6 +502,7 @@ void FiltersMenu::applyReorder(
 	_ignoreRefresh = true;
 	filters->saveOrder(order);
 	_ignoreRefresh = false;
+	Kotato::JsonSettings::Write();
 }
 
 } // namespace Window

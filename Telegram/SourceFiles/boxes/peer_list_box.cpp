@@ -21,6 +21,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_keys.h"
 #include "storage/file_download.h"
 #include "data/data_peer_values.h"
+#include "data/data_channel.h"
 #include "data/data_chat.h"
 #include "data/data_user.h"
 #include "data/data_session.h"
@@ -31,6 +32,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_boxes.h"
 #include "styles/style_dialogs.h"
 #include "styles/style_widgets.h"
+#include "styles/style_info.h"
 
 #include <rpl/range.h>
 
@@ -452,14 +454,22 @@ void PeerListRow::refreshStatus() {
 		if (!chat->amIn()) {
 			setStatusText(tr::lng_chat_status_unaccessible(tr::now));
 		} else if (chat->count > 0) {
-			setStatusText(tr::lng_chat_status_members(tr::now, lt_count_decimal, chat->count));
+			setStatusText(tr::lng_group_status(tr::now) + ", " + tr::lng_chat_status_members(tr::now, lt_count_decimal, chat->count));
 		} else {
 			setStatusText(tr::lng_group_status(tr::now));
 		}
 	} else if (peer()->isMegagroup()) {
-		setStatusText(tr::lng_group_status(tr::now));
+		if (peer()->asChannel()->membersCountKnown()) {
+			setStatusText(tr::ktg_supergroup_status(tr::now) + ", " + tr::lng_chat_status_members(tr::now, lt_count_decimal, peer()->asChannel()->membersCount()));
+		} else {
+			setStatusText(tr::ktg_supergroup_status(tr::now));
+		}
 	} else if (peer()->isChannel()) {
-		setStatusText(tr::lng_channel_status(tr::now));
+		if (peer()->asChannel()->membersCountKnown()) {
+			setStatusText(tr::lng_channel_status(tr::now) + ", " + tr::lng_chat_status_subscribers(tr::now, lt_count_decimal, peer()->asChannel()->membersCount()));
+		} else {
+			setStatusText(tr::lng_channel_status(tr::now));
+		}
 	}
 }
 
@@ -514,9 +524,37 @@ void PeerListRow::invalidatePixmapsCache() {
 }
 
 int PeerListRow::nameIconWidth() const {
-	return (special() || !_peer->isVerified())
+	if (special()) {
+		return 0;
+	}
+	auto hasCreatorRights = false;
+	auto hasAdminRights = false;
+	if (const auto chat = _peer->asChat()) {
+		if (chat->amCreator()) {
+			hasCreatorRights = true;
+			hasAdminRights = true;
+		} else if (chat->hasAdminRights()) {
+			hasAdminRights = true;
+		}
+	} else if (const auto channel = _peer->asChannel()) {
+		if (channel->amCreator()) {
+			hasCreatorRights = true;
+			hasAdminRights = true;
+		} else if (channel->hasAdminRights()) {
+			hasAdminRights = true;
+		}
+	}
+
+	return special()
 		? 0
-		: st::dialogsVerifiedIcon.width();
+		: (_peer->isVerified()
+			? st::dialogsVerifiedIcon.width()
+			: 0)
+		+ (hasCreatorRights
+			? st::infoMembersCreatorIcon.width()
+			: hasAdminRights
+				? st::infoMembersAdminIcon.width()
+				: 0);
 }
 
 void PeerListRow::paintNameIcon(
@@ -525,7 +563,43 @@ void PeerListRow::paintNameIcon(
 		int y,
 		int outerWidth,
 		bool selected) {
-	st::dialogsVerifiedIcon.paint(p, x, y, outerWidth);
+	if (special()) {
+		return;
+	}
+
+	auto hasCreatorRights = false;
+	auto hasAdminRights = false;
+	if (const auto chat = _peer->asChat()) {
+		if (chat->amCreator()) {
+			hasCreatorRights = true;
+			hasAdminRights = true;
+		} else if (chat->hasAdminRights()) {
+			hasAdminRights = true;
+		}
+	} else if (const auto channel = _peer->asChannel()) {
+		if (channel->amCreator()) {
+			hasCreatorRights = true;
+			hasAdminRights = true;
+		} else if (channel->hasAdminRights()) {
+			hasAdminRights = true;
+		}
+	}
+
+	auto icon = [&] {
+		return hasCreatorRights
+				? (selected
+					? &st::infoMembersCreatorIconOver
+					: &st::infoMembersCreatorIcon)
+				: (selected
+					? &st::infoMembersAdminIconOver
+					: &st::infoMembersAdminIcon);
+	}();
+	if (_peer->isVerified()) { 
+		st::dialogsVerifiedIcon.paint(p, x, y, outerWidth);
+	}
+	if (hasAdminRights) {
+		icon->paint(p, x + (_peer->isVerified() ? st::dialogsVerifiedIcon.width() : 0 ), y, outerWidth);
+	}
 }
 
 void PeerListRow::paintStatusText(
@@ -540,6 +614,10 @@ void PeerListRow::paintStatusText(
 	p.setFont(st::contactsStatusFont);
 	p.setPen(statusHasOnlineColor ? st.statusFgActive : (selected ? st.statusFgOver : st.statusFg));
 	_status.drawLeftElided(p, x, y, availableWidth, outerWidth);
+}
+
+bool PeerListRow::hasAction() {
+	return true;
 }
 
 template <typename UpdateCallback>
@@ -1276,7 +1354,11 @@ crl::time PeerListContent::paintRow(
 	p.setPen(st::contactsNameFg);
 
 	auto skipRight = _st.item.photoPosition.x();
-	auto actionSize = row->actionSize();
+	auto actionSize = !row->actionSize().isEmpty()
+						&& (row->placeholderSize().isEmpty() 
+							|| selected)
+						? row->actionSize()
+						: row->placeholderSize();
 	auto actionMargins = actionSize.isEmpty() ? QMargins() : row->actionMargins();
 	auto &name = row->name();
 	auto namex = _st.item.namePosition.x();
@@ -1649,7 +1731,7 @@ void PeerListContent::selectByMouse(QPoint globalPosition) {
 		if (row->disabled()) {
 			selected = Selected();
 		} else {
-			if (getActionRect(row, selected.index).contains(point)) {
+			if (row->hasAction() && getActionRect(row, selected.index).contains(point)) {
 				selected.action = true;
 			}
 		}

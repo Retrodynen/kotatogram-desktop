@@ -261,6 +261,8 @@ public:
 		not_null<PhotoData*> photo,
 		Api::SendOptions options);
 
+	void mentionUser(PeerData *peer);
+
 	void showInfoTooltip(
 		const TextWithEntities &text,
 		Fn<void()> hiddenCallback);
@@ -287,6 +289,7 @@ protected:
 	void resizeEvent(QResizeEvent *e) override;
 	void keyPressEvent(QKeyEvent *e) override;
 	void mousePressEvent(QMouseEvent *e) override;
+	void contextMenuEvent(QContextMenuEvent *e) override;
 	void paintEvent(QPaintEvent *e) override;
 	void leaveEventHook(QEvent *e) override;
 	void mouseReleaseEvent(QMouseEvent *e) override;
@@ -768,5 +771,7 @@ private:
 	bool _inGrab = false;
 
 	int _topDelta = 0;
+
+	base::unique_qptr<Ui::PopupMenu> _menu;
 
 };

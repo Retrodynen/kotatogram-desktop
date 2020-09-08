@@ -20,6 +20,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/scroll_area.h"
 #include "ui/widgets/input_fields.h"
+#include "ui/widgets/dropdown_menu.h"
 #include "ui/wrap/slide_wrap.h"
 #include "ui/text_options.h"
 #include "chat_helpers/message_field.h"
@@ -41,6 +42,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_layers.h"
 #include "styles/style_boxes.h"
 #include "styles/style_history.h"
+#include "styles/style_info.h"
 
 class ShareBox::Inner final : public Ui::RpWidget, private base::Subscriber {
 public:
@@ -68,6 +70,8 @@ public:
 	void activateSkipPage(int pageHeight, int direction);
 	void updateFilter(QString filter = QString());
 	void selectActive();
+	void tryGoToChat();
+	void selectionMade();
 
 	rpl::producer<Ui::ScrollToRequest> scrollToRequests() const;
 	rpl::producer<> searchRequests() const;
@@ -164,13 +168,15 @@ ShareBox::ShareBox(
 	CopyCallback &&copyCallback,
 	SubmitCallback &&submitCallback,
 	FilterCallback &&filterCallback,
-	GoToChatCallback &&goToChatCallback)
+	GoToChatCallback &&goToChatCallback,
+	bool hasMedia)
 : _navigation(navigation)
 , _api(&_navigation->session().mtp())
 , _copyCallback(std::move(copyCallback))
 , _submitCallback(std::move(submitCallback))
 , _filterCallback(std::move(filterCallback))
 , _goToChatCallback(goToChatCallback ? std::move(goToChatCallback) : nullptr)
+, _hasMediaMessages(hasMedia)
 , _select(
 	this,
 	st::contactsMultiSelect,
@@ -223,7 +229,8 @@ void ShareBox::prepare() {
 	_select->resizeToWidth(st::boxWideWidth);
 	Ui::SendPendingMoveResizeEvents(_select);
 
-	setTitle(tr::lng_share_title());
+	setTitle(tr::lng_selected_forward());
+	updateAdditionalTitle();
 
 	_inner = setInnerWidget(
 		object_ptr<Inner>(
@@ -249,11 +256,16 @@ void ShareBox::prepare() {
 	});
 	_select->setResizedCallback([=] { updateScrollSkips(); });
 	_select->setSubmittedCallback([=](Qt::KeyboardModifiers modifiers) {
-		if (modifiers.testFlag(Qt::ControlModifier)
+		if ((modifiers.testFlag(Qt::ControlModifier) && !cForwardChatOnClick())
 			|| modifiers.testFlag(Qt::MetaModifier)) {
 			submit({});
 		} else {
 			_inner->selectActive();
+			if (!modifiers.testFlag(Qt::ControlModifier) || cForwardChatOnClick()) {
+				_inner->tryGoToChat();
+			} else {
+				_inner->selectionMade();
+			}
 		}
 	});
 	_comment->heightValue(
@@ -419,6 +431,8 @@ void ShareBox::keyPressEvent(QKeyEvent *e) {
 			_inner->activateSkipPage(contentHeight(), -1);
 		} else if (e->key() == Qt::Key_PageDown) {
 			_inner->activateSkipPage(contentHeight(), 1);
+		} else if (e->key() == Qt::Key_Escape && !_select->getQuery().isEmpty()) {
+			_select->clearQuery();
 		} else {
 			BoxContent::keyPressEvent(e);
 		}
@@ -438,6 +452,9 @@ SendMenu::Type ShareBox::sendMenuType() const {
 
 void ShareBox::createButtons() {
 	clearButtons();
+	const auto moreButton = addTopButton(st::infoTopBarMenu);
+	moreButton->setClickedCallback([=] { showMenu(moreButton.data()); });
+
 	if (_hasSelected) {
 		if (_goToChatCallback && _inner->selected().size() == 1) {
 			const auto singleChat = _inner->selected().at(0);
@@ -456,6 +473,109 @@ void ShareBox::createButtons() {
 		addButton(tr::lng_share_copy_link(), [=] { copyLink(); });
 	}
 	addButton(tr::lng_cancel(), [=] { closeBox(); });
+}
+
+bool ShareBox::showMenu(not_null<Ui::IconButton*> button) {
+	if (_menu) {
+		_menu->hideAnimated(Ui::InnerDropdown::HideOption::IgnoreShow);
+		return true;
+	}
+
+	_menu = base::make_unique_q<Ui::DropdownMenu>(window());
+	const auto weak = _menu.get();
+	_menu->setHiddenCallback([=] {
+		weak->deleteLater();
+		if (_menu == weak) {
+			button->setForceRippled(false);
+		}
+	});
+	_menu->setShowStartCallback([=] {
+		if (_menu == weak) {
+			button->setForceRippled(true);
+		}
+	});
+	_menu->setHideStartCallback([=] {
+		if (_menu == weak) {
+			button->setForceRippled(false);
+		}
+	});
+	button->installEventFilter(_menu);
+
+	if (!cForwardQuoted()) {
+		_menu->addAction(tr::ktg_forward_menu_quoted(tr::now), [=] {
+			cSetForwardQuoted(true);
+			updateAdditionalTitle();
+		});
+	}
+	if (cForwardQuoted() || !cForwardCaptioned()) {
+		_menu->addAction(tr::ktg_forward_menu_unquoted(tr::now), [=] {
+			cSetForwardQuoted(false);
+			cSetForwardCaptioned(true);
+			updateAdditionalTitle();
+		});
+	}
+	if (cForwardQuoted() || cForwardCaptioned()) {
+		_menu->addAction(tr::ktg_forward_menu_uncaptioned(tr::now), [=] {
+			cSetForwardQuoted(false);
+			cSetForwardCaptioned(false);
+			updateAdditionalTitle();
+		});
+	}
+	if (_hasMediaMessages) {
+		_menu->addSeparator();
+		if (!cForwardAlbumsAsIs()) {
+			_menu->addAction(tr::ktg_forward_menu_default_albums(tr::now), [=] {
+				cSetForwardAlbumsAsIs(true);
+				updateAdditionalTitle();
+			});
+		}
+		if (cForwardAlbumsAsIs() || !cForwardGrouped()) {
+			_menu->addAction(tr::ktg_forward_menu_group_all_media(tr::now), [=] {
+				cSetForwardAlbumsAsIs(false);
+				cSetForwardGrouped(true);
+				updateAdditionalTitle();
+			});
+		}
+		if (cForwardAlbumsAsIs() || cForwardGrouped()) {
+			_menu->addAction(tr::ktg_forward_menu_separate_messages(tr::now), [=] {
+				cSetForwardAlbumsAsIs(false);
+				cSetForwardGrouped(false);
+				updateAdditionalTitle();
+			});
+		}
+	}
+
+	const auto parentTopLeft = window()->mapToGlobal({ 0, 0 });
+	const auto buttonTopLeft = button->mapToGlobal({ 0, 0 });
+	const auto parentRect = QRect(parentTopLeft, window()->size());
+	const auto buttonRect = QRect(buttonTopLeft, button->size());
+	_menu->move(
+		buttonRect.x() + buttonRect.width() - _menu->width() - parentRect.x(),
+		buttonRect.y() + buttonRect.height() - parentRect.y() - style::ConvertScale(18));
+	_menu->showAnimated(Ui::PanelAnimation::Origin::TopRight);
+
+	return true;
+}
+
+void ShareBox::updateAdditionalTitle() {
+	QString result;
+
+	if (!cForwardQuoted()) {
+		result += (cForwardCaptioned()
+			? tr::ktg_forward_subtitle_unquoted(tr::now)
+			: tr::ktg_forward_subtitle_uncaptioned(tr::now));
+	}
+
+	if (_hasMediaMessages && !cForwardAlbumsAsIs()) {
+		if (!result.isEmpty()) {
+			result += ", ";
+		}
+		result += (cForwardGrouped()
+			? tr::ktg_forward_subtitle_group_all_media(tr::now)
+			: tr::ktg_forward_subtitle_separate_messages(tr::now));
+	}
+
+	setAdditionalTitle(rpl::single(result));
 }
 
 void ShareBox::applyFilterUpdate(const QString &query) {
@@ -940,23 +1060,34 @@ void ShareBox::Inner::mousePressEvent(QMouseEvent *e) {
 	if (e->button() == Qt::LeftButton) {
 		updateUpon(e->pos());
 		changeCheckState(getChatAtIndex(_upon));
-		if (!_hadSelection
-			&& !(e->modifiers() & Qt::ControlModifier)
-			&& _selected.size() == 1) {
-			if (_submitRequest && _selected.front()->isSelf()) {
-				_submitRequest();
-			} else if (_goToChatRequest && cForwardChatOnClick()) {
-				_goToChatRequest();
-			}
-			_hadSelection = true;
-		} else if (!_hadSelection) {
-			_hadSelection = true;
+		if (!e->modifiers().testFlag(Qt::ControlModifier)) {
+			tryGoToChat();
+		} else {
+			selectionMade();
 		}
 	}
 }
 
 void ShareBox::Inner::selectActive() {
 	changeCheckState(getChatAtIndex(_active > 0 ? _active : 0));
+}
+
+void ShareBox::Inner::tryGoToChat() {
+	if (!_hadSelection
+		&& _selected.size() == 1) {
+		if (_submitRequest && _selected.front()->isSelf()) {
+			_submitRequest();
+		} else if (_goToChatRequest && cForwardChatOnClick()) {
+			_goToChatRequest();
+		}
+		_hadSelection = true;
+	}
+}
+
+void ShareBox::Inner::selectionMade() {
+	 if (!_hadSelection) {
+		_hadSelection = true;
+	}
 }
 
 void ShareBox::Inner::resizeEvent(QResizeEvent *e) {

@@ -165,13 +165,46 @@
 	"ktg_admin_log_banned_send_games": "Inviare giochi",
 	"ktg_admin_log_banned_use_inline": "Usare bot inline",
 
-	// New strings
+	// Strings since 1.3.8 beta
 	"ktg_forward_go_to_chat": "Vai alla chat",
 	"ktg_settings_forward": "Inoltro",
 	"ktg_settings_forward_retain_selection": "Mantieni la selezione dopo l'inoltro",
 	"ktg_settings_forward_chat_on_click": "Apri la chat al click",
 	"ktg_settings_forward_chat_on_click_description": "Puoi tenere premuto Ctrl per selezionare più chat insieme indipendentemente da questa opzione.",
-	
+
+	// New strings
+	"ktg_forward_menu_quoted": "Citato",
+	"ktg_forward_menu_unquoted": "Senza citazione e con didascalia",
+	"ktg_forward_menu_uncaptioned": "Senza citazione e senza didascalia",
+	"ktg_forward_menu_default_albums": "Preserva gli album",
+	"ktg_forward_menu_group_all_media": "Raggruppa tutti i media",
+	"ktg_forward_menu_separate_messages": "Separa i messaggi",
+	"ktg_forward_subtitle_unquoted": "senza citazione",
+	"ktg_forward_subtitle_uncaptioned": "senza didascalia",
+	"ktg_forward_subtitle_group_all_media": "come album",
+	"ktg_forward_subtitle_separate_messages": "uno ad uno",
+	"ktg_profile_mention_user": "Menziona utente",
+	"ktg_filters_exclude_not_owned": "Non creatore",
+	"ktg_filters_exclude_not_admin": "Non amministratore",
+	"ktg_filters_exclude_owned": "Creatore",
+	"ktg_filters_exclude_admin": "Amministratore",
+	"ktg_filters_exclude_not_recent": "Non aperte in questa sessione",
+	"ktg_filters_exclude_filtered": "Da altre cartelle",
+	"ktg_filters_create_cloud": "Crea cartella cloud",
+	"ktg_filters_create_local": "Crea cartella locale",
+	"ktg_filters_description": "Le cartelle cloud sono sincronizzate tra tutte le tue app Telegram, ma le cartelle locali hanno più funzionalità da offrire.",
+	"ktg_filters_new_cloud": "Nuova cartella cloud",
+	"ktg_filters_new_local": "Nuova cartella locale",
+	"ktg_filters_edit_cloud": "Modifica cartella cloud",
+	"ktg_filters_edit_local": "Modifica cartella locale",
+	"ktg_filters_local": "cartella locale",
+	"ktg_filters_cloud": "cartella cloud",
+	"ktg_filters_cloud_limit": "Spiacenti, non puoi creare altre cartelle cloud. Puoi invece creare una cartella locale.",
+	"ktg_filters_hide_folder": "Nascondi cartella",
+	"ktg_filters_hide_button": "Nascondi bottone",
+	"ktg_filters_hide_all_chats_toast": "La cartella \"Tutte le chat\" è nascosta.\nPuoi riattivarla nelle Impostazioni di Kotatogram.",
+	"ktg_filters_hide_edit_toast": "Il pulsante Modifica è nascosto.\nPuoi riattivarlo nelle Impostazioni di Kotatogram.",
+
 	// This string should always be last for better work with Git.
 	"dummy_last_string": ""
 }

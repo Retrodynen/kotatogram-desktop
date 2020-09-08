@@ -625,6 +625,15 @@ void ComposeControls::init() {
 			cancelEditMessage();
 		}, _wrap->lifetime());
 	}
+
+	HoverEmojiPanelChanges(
+	) | rpl::start_with_next([=] {
+		if (_window->hasTabbedSelectorOwnership()) {
+			createTabbedPanel();
+		} else {
+			setTabbedPanel(nullptr);
+		}
+	}, _wrap->lifetime());
 }
 
 void ComposeControls::setTextFromEditingMessage(not_null<HistoryItem*> item) {
@@ -663,6 +672,14 @@ void ComposeControls::initTabbedSelector() {
 	} else {
 		setTabbedPanel(nullptr);
 	}
+
+	base::install_event_filter(_tabbedSelectorToggle, [=](not_null<QEvent*> e) {
+		if (e->type() == QEvent::ContextMenu && !HoverEmojiPanel()) {
+			_tabbedPanel->toggleAnimated();
+			return base::EventFilterResult::Cancel;
+		}
+		return base::EventFilterResult::Continue;
+	});
 
 	_tabbedSelectorToggle->addClickHandler([=] {
 		toggleTabbedSelectorMode();
@@ -822,7 +839,9 @@ void ComposeControls::setTabbedPanel(
 		std::unique_ptr<ChatHelpers::TabbedPanel> panel) {
 	_tabbedPanel = std::move(panel);
 	if (const auto raw = _tabbedPanel.get()) {
-		_tabbedSelectorToggle->installEventFilter(raw);
+		if (HoverEmojiPanel()) {
+			_tabbedSelectorToggle->installEventFilter(raw);
+		}
 		_tabbedSelectorToggle->setColorOverrides(nullptr, nullptr, nullptr);
 	} else {
 		_tabbedSelectorToggle->setColorOverrides(
