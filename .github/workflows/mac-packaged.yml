@@ -63,7 +63,7 @@ jobs:
       OPENALDIR: /usr/local/opt/openal-soft
       OPENSSL_ROOT_DIR: /usr/local/opt/openssl@1.1
       Qt5_DIR: /usr/local/opt/qt/lib/cmake/Qt5
-      UPLOAD_ARTIFACT: "false"
+      UPLOAD_ARTIFACT: "true"
       ONLY_CACHE: "false"
       MANUAL_CACHING: "1"
       AUTO_CACHING: "1"
@@ -252,6 +252,10 @@ jobs:
         if: env.ONLY_CACHE == 'false'
         env:
           tg_owt_DIR: ${{ env.LibrariesPath }}/tg_owt/build
+          API_ID: ${{ secrets.API_ID }}
+          TDESKTOP_API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          TDESKTOP_API_HASH: ${{ secrets.API_HASH }}
         run: |
           cd $REPO_NAME/Telegram
 
@@ -266,9 +270,9 @@ jobs:
 
           ./configure.sh \
           -DCMAKE_FIND_FRAMEWORK=LAST \
-          -DTDESKTOP_API_TEST=ON \
+          -DTDESKTOP_API_ID=${API_ID} \
+          -DTDESKTOP_API_HASH=${API_HASH} \
           -DDESKTOP_APP_USE_PACKAGED_LAZY=ON \
-          -DDESKTOP_APP_USE_PACKAGED_FFMPEG_STATIC=ON \
           $DEFINE
 
           cmake --build ../out --config Debug
