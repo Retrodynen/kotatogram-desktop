@@ -328,9 +328,6 @@ QByteArray GenerateSettingsJson(bool areDefault = false) {
 				auto peerObj = QJsonObject();
 				peerObj.insert(qsl("type"), peerTypeToStr(peer.type));
 				peerObj.insert(qsl("id"), peer.id);
-				if (peer.accessHash != 0) {
-					peerObj.insert(qsl("hash"), QString::number(peer.accessHash));
-				}
 				folderNever << peerObj;
 			}
 			folderObject.insert(qsl("never"), folderNever);
@@ -340,9 +337,6 @@ QByteArray GenerateSettingsJson(bool areDefault = false) {
 				auto peerObj = QJsonObject();
 				peerObj.insert(qsl("type"), peerTypeToStr(peer.type));
 				peerObj.insert(qsl("id"), peer.id);
-				if (peer.accessHash != 0) {
-					peerObj.insert(qsl("hash"), QString::number(peer.accessHash));
-				}
 				folderPinned << peerObj;
 			}
 			folderObject.insert(qsl("pinned"), folderPinned);
@@ -352,9 +346,6 @@ QByteArray GenerateSettingsJson(bool areDefault = false) {
 				auto peerObj = QJsonObject();
 				peerObj.insert(qsl("type"), peerTypeToStr(peer.type));
 				peerObj.insert(qsl("id"), peer.id);
-				if (peer.accessHash != 0) {
-					peerObj.insert(qsl("hash"), QString::number(peer.accessHash));
-				}
 				folderAlways << peerObj;
 			}
 			folderObject.insert(qsl("always"), folderAlways);
@@ -378,6 +369,7 @@ QByteArray GenerateSettingsJson(bool areDefault = false) {
 	settings.insert(qsl("recent_stickers_limit"), RecentStickersLimit());
 	settings.insert(qsl("userpic_corner_type"), cUserpicCornersType());
 	settings.insert(qsl("always_show_top_userpic"), cShowTopBarUserpic());
+	settings.insert(qsl("gtk_integration"), cGtkIntegration());
 	settings.insert(qsl("disable_tray_counter"), cDisableTrayCounter());
 	settings.insert(qsl("use_telegram_panel_icon"), cUseTelegramPanelIcon());
 	settings.insert(qsl("custom_app_icon"), cCustomAppIcon());
@@ -620,6 +612,10 @@ bool Manager::readCustomFile() {
 		cSetShowTopBarUserpic(v);
 	});
 
+	ReadBoolOption(settings, "gtk_integration", [&](auto v) {
+		cSetGtkIntegration(v);
+	});
+
 	ReadBoolOption(settings, "disable_tray_counter", [&](auto v) {
 		cSetDisableTrayCounter(v);
 	});
@@ -801,9 +797,9 @@ bool Manager::readCustomFile() {
 						}
 
 						auto isPeerTypeRead = ReadStringOption(peer, "type", [&](auto type) {
-							peerStruct.type = QString::compare(type.toLower(), "channel")
+							peerStruct.type = (QString::compare(type.toLower(), "channel") == 0)
 								? LocalFolder::Peer::Type::Channel
-								: QString::compare(type.toLower(), "chat")
+								: (QString::compare(type.toLower(), "chat") == 0)
 								? LocalFolder::Peer::Type::Chat
 								: LocalFolder::Peer::Type::User;
 						});
@@ -811,13 +807,6 @@ bool Manager::readCustomFile() {
 						if (!isPeerTypeRead) {
 							peerStruct.type = LocalFolder::Peer::Type::User;
 						}
-
-						ReadStringOption(peer, "hash", [&](auto hashString) {
-							const auto hash = hashString.toULongLong();
-							if (hash) {
-								peerStruct.accessHash = hash;
-							}
-						});
 
 						folderStruct.never.push_back(peerStruct);
 					}
@@ -841,9 +830,9 @@ bool Manager::readCustomFile() {
 						}
 
 						auto isPeerTypeRead = ReadStringOption(peer, "type", [&](auto type) {
-							peerStruct.type = QString::compare(type.toLower(), "channel")
+							peerStruct.type = (QString::compare(type.toLower(), "channel") == 0)
 								? LocalFolder::Peer::Type::Channel
-								: QString::compare(type.toLower(), "chat")
+								: (QString::compare(type.toLower(), "chat") == 0)
 								? LocalFolder::Peer::Type::Chat
 								: LocalFolder::Peer::Type::User;
 						});
@@ -851,13 +840,6 @@ bool Manager::readCustomFile() {
 						if (!isPeerTypeRead) {
 							peerStruct.type = LocalFolder::Peer::Type::User;
 						}
-
-						ReadStringOption(peer, "hash", [&](auto hashString) {
-							const auto hash = hashString.toULongLong();
-							if (hash) {
-								peerStruct.accessHash = hash;
-							}
-						});
 
 						folderStruct.pinned.push_back(peerStruct);
 					}
@@ -881,9 +863,9 @@ bool Manager::readCustomFile() {
 						}
 
 						auto isPeerTypeRead = ReadStringOption(peer, "type", [&](auto type) {
-							peerStruct.type = QString::compare(type.toLower(), "channel")
+							peerStruct.type = (QString::compare(type.toLower(), "channel") == 0)
 								? LocalFolder::Peer::Type::Channel
-								: QString::compare(type.toLower(), "chat")
+								: (QString::compare(type.toLower(), "chat") == 0)
 								? LocalFolder::Peer::Type::Chat
 								: LocalFolder::Peer::Type::User;
 						});
@@ -891,13 +873,6 @@ bool Manager::readCustomFile() {
 						if (!isPeerTypeRead) {
 							peerStruct.type = LocalFolder::Peer::Type::User;
 						}
-
-						ReadStringOption(peer, "hash", [&](auto hashString) {
-							const auto hash = hashString.toULongLong();
-							if (hash) {
-								peerStruct.accessHash = hash;
-							}
-						});
 
 						folderStruct.always.push_back(peerStruct);
 					}

@@ -36,7 +36,6 @@ class Result;
 
 namespace Storage {
 enum class SharedMediaType : signed char;
-struct PreparedList;
 class DownloadMtprotoTask;
 class Account;
 } // namespace Storage
@@ -49,10 +48,15 @@ namespace Core {
 struct CloudPasswordState;
 } // namespace Core
 
+namespace Ui {
+struct PreparedList;
+} // namespace Ui
+
 namespace Api {
 
 class Updates;
 class Authorizations;
+class AttachedStickers;
 class SelfDestruct;
 class SensitiveContent;
 class GlobalPrivacy;
@@ -362,7 +366,8 @@ public:
 		Fn<void()> callbackNotModified = nullptr);
 	void addChatParticipants(
 		not_null<PeerData*> peer,
-		const std::vector<not_null<UserData*>> &users);
+		const std::vector<not_null<UserData*>> &users,
+		Fn<void(bool)> done = nullptr);
 
 	rpl::producer<SendAction> sendActions() const {
 		return _sendActions.events();
@@ -392,7 +397,7 @@ public:
 		int duration,
 		const SendAction &action);
 	void sendFiles(
-		Storage::PreparedList &&list,
+		Ui::PreparedList &&list,
 		SendMediaType type,
 		TextWithTags &&caption,
 		std::shared_ptr<SendingAlbum> album,
@@ -403,7 +408,7 @@ public:
 		const SendAction &action);
 
 	void editMedia(
-		Storage::PreparedList &&list,
+		Ui::PreparedList &&list,
 		SendMediaType type,
 		TextWithTags &&caption,
 		const SendAction &action,
@@ -458,6 +463,7 @@ public:
 	rpl::producer<BlockedPeersSlice> blockedPeersSlice();
 
 	[[nodiscard]] Api::Authorizations &authorizations();
+	[[nodiscard]] Api::AttachedStickers &attachedStickers();
 	[[nodiscard]] Api::SelfDestruct &selfDestruct();
 	[[nodiscard]] Api::SensitiveContent &sensitiveContent();
 	[[nodiscard]] Api::GlobalPrivacy &globalPrivacy();
@@ -821,6 +827,7 @@ private:
 	rpl::event_stream<BlockedPeersSlice> _blockedPeersChanges;
 
 	const std::unique_ptr<Api::Authorizations> _authorizations;
+	const std::unique_ptr<Api::AttachedStickers> _attachedStickers;
 	const std::unique_ptr<Api::SelfDestruct> _selfDestruct;
 	const std::unique_ptr<Api::SensitiveContent> _sensitiveContent;
 	const std::unique_ptr<Api::GlobalPrivacy> _globalPrivacy;

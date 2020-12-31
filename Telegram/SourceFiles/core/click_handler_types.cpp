@@ -26,14 +26,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include <QtGui/QGuiApplication>
 
-namespace {
-
 bool UrlRequiresConfirmation(const QUrl &url) {
 	using namespace qthelp;
-	return !regex_match(qsl("(^|\\.)(telegram\\.org|telegra\\.ph|telesco\\.pe)$"), url.host(), RegExOption::CaseInsensitive);
-}
 
-} // namespace
+	return !regex_match(
+		"(^|\\.)(telegram\\.(org|me|dog)|t\\.me|telegra\\.ph|telesco\\.pe)$",
+		url.host(),
+		RegExOption::CaseInsensitive);
+}
 
 void HiddenUrlClickHandler::Open(QString url, QVariant context) {
 	url = Core::TryConvertUrlToLocal(url);
@@ -49,7 +49,7 @@ void HiddenUrlClickHandler::Open(QString url, QVariant context) {
 		open();
 	} else {
 		const auto parsedUrl = QUrl::fromUserInput(url);
-		if (UrlRequiresConfirmation(url)
+		if (UrlRequiresConfirmation(parsedUrl)
 			&& QGuiApplication::keyboardModifiers() != Qt::ControlModifier) {
 			Core::App().hideMediaView();
 			const auto displayed = parsedUrl.isValid()
@@ -181,20 +181,14 @@ auto CashtagClickHandler::getTextEntity() const -> TextEntity {
 	return { EntityType::Cashtag };
 }
 
-PeerData *BotCommandClickHandler::_peer = nullptr;
-UserData *BotCommandClickHandler::_bot = nullptr;
 void BotCommandClickHandler::onClick(ClickContext context) const {
 	const auto button = context.button;
 	if (button == Qt::LeftButton || button == Qt::MiddleButton) {
-		if (auto peer = peerForCommand()) {
-			if (auto bot = peer->isUser() ? peer->asUser() : botForCommand()) {
-				Ui::showPeerHistory(peer, ShowAtTheEndMsgId);
-				App::sendBotCommand(peer, bot, _cmd);
-				return;
-			}
-		}
-
-		if (auto peer = Ui::getPeerForMouseAction()) { // old way
+		const auto my = context.other.value<ClickHandlerContext>();
+		if (const auto delegate = my.elementDelegate ? my.elementDelegate() : nullptr) {
+			delegate->elementSendBotCommand(_cmd, my.itemId);
+			return;
+		} else if (auto peer = Ui::getPeerForMouseAction()) { // old way
 			auto bot = peer->isUser() ? peer->asUser() : nullptr;
 			if (!bot) {
 				if (const auto view = App::hoveredLinkItem()) {

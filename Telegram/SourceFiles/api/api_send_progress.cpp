@@ -10,13 +10,18 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 #include "history/history.h"
 #include "data/data_peer.h"
+#include "data/data_user.h"
+#include "base/unixtime.h"
+#include "data/data_peer_values.h"
 #include "apiwrap.h"
 
 namespace Api {
 namespace {
 
 constexpr auto kCancelTypingActionTimeout = crl::time(5000);
-constexpr auto kSetMyActionForMs = 10 * crl::time(1000);
+constexpr auto kSendMySpeakingInterval = 3 * crl::time(1000);
+constexpr auto kSendMyTypingInterval = 5 * crl::time(1000);
+constexpr auto kSendTypingsToOfflineFor = TimeId(30);
 
 } // namespace
 
@@ -78,12 +83,15 @@ bool SendProgressManager::updated(const Key &key, bool doing) {
 	const auto now = crl::now();
 	const auto i = _updated.find(key);
 	if (doing) {
+		const auto sendEach = (key.type == SendProgressType::Speaking)
+			? kSendMySpeakingInterval
+			: kSendMyTypingInterval;
 		if (i == end(_updated)) {
-			_updated.emplace(key, now + kSetMyActionForMs);
-		} else if (i->second > now + (kSetMyActionForMs / 2)) {
+			_updated.emplace(key, now + 2 * sendEach);
+		} else if (i->second > now + sendEach) {
 			return false;
 		} else {
-			i->second = now + kSetMyActionForMs;
+			i->second = now + 2 * sendEach;
 		}
 	} else {
 		if (i == end(_updated)) {
@@ -98,6 +106,9 @@ bool SendProgressManager::updated(const Key &key, bool doing) {
 }
 
 void SendProgressManager::send(const Key &key, int progress) {
+	if (skipRequest(key)) {
+		return;
+	}
 	using Type = SendProgressType;
 	const auto action = [&]() -> MTPsendMessageAction {
 		const auto p = MTP_int(progress);
@@ -114,6 +125,7 @@ void SendProgressManager::send(const Key &key, int progress) {
 		case Type::ChooseLocation: return MTP_sendMessageGeoLocationAction();
 		case Type::ChooseContact: return MTP_sendMessageChooseContactAction();
 		case Type::PlayGame: return MTP_sendMessageGamePlayAction();
+		case Type::Speaking: return MTP_speakingInGroupCallAction();
 		default: return MTP_sendMessageTypingAction();
 		}
 	}();
@@ -132,6 +144,26 @@ void SendProgressManager::send(const Key &key, int progress) {
 	if (key.type == Type::Typing) {
 		_stopTypingHistory = key.history;
 		_stopTypingTimer.callOnce(kCancelTypingActionTimeout);
+	}
+}
+
+bool SendProgressManager::skipRequest(const Key &key) const {
+	const auto user = key.history->peer->asUser();
+	if (!user) {
+		return false;
+	} else if (user->isSelf()) {
+		return true;
+	} else if (user->isBot() && !user->isSupport()) {
+		return true;
+	}
+	const auto recently = base::unixtime::now() - kSendTypingsToOfflineFor;
+	const auto online = user->onlineTill;
+	if (online == -2) { // last seen recently
+		return false;
+	} else if (online < 0) {
+		return (-online < recently);
+	} else {
+		return (online < recently);
 	}
 }
 

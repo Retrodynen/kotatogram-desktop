@@ -57,7 +57,7 @@ struct PeerUpdate {
 		Notifications     = (1 << 4),
 		Migration         = (1 << 5),
 		UnavailableReason = (1 << 6),
-		PinnedMessage     = (1 << 7),
+		PinnedMessages    = (1 << 7),
 		IsBlocked         = (1 << 8),
 
 		// For users
@@ -86,9 +86,10 @@ struct PeerUpdate {
 		ChannelLinkedChat = (1 << 27),
 		ChannelLocation   = (1 << 28),
 		Slowmode          = (1 << 29),
+		GroupCall         = (1 << 30),
 
 		// For iteration
-		LastUsedBit       = (1 << 29),
+		LastUsedBit       = (1 << 30),
 	};
 	using Flags = base::flags<Flag>;
 	friend inline constexpr auto is_flag_type(Flag) { return true; }

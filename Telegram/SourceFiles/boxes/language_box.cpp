@@ -20,7 +20,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/wrap/slide_wrap.h"
 #include "ui/effects/ripple_animation.h"
 #include "ui/toast/toast.h"
-#include "ui/text_options.h"
+#include "ui/text/text_options.h"
 #include "storage/localstorage.h"
 #include "boxes/confirm_box.h"
 #include "mainwidget.h"
@@ -880,7 +880,7 @@ void Content::setupContent(
 		const auto inner = wrap->entity();
 		inner->add(object_ptr<Ui::FixedHeightWidget>(
 			inner,
-			st::boxVerticalMargin));
+			st::defaultBox.margin.top()));
 		const auto rows = inner->add(object_ptr<Rows>(
 			inner,
 			list,
@@ -888,7 +888,7 @@ void Content::setupContent(
 			areOfficial));
 		inner->add(object_ptr<Ui::FixedHeightWidget>(
 			inner,
-			st::boxVerticalMargin));
+			st::defaultBox.margin.top()));
 
 		rows->isEmpty() | rpl::start_with_next([=](bool empty) {
 			wrap->toggle(!empty, anim::type::instant);
@@ -1153,7 +1153,7 @@ void LanguageBox::setInnerFocus() {
 not_null<Ui::MultiSelect*> LanguageBox::createMultiSelect() {
 	const auto result = Ui::CreateChild<Ui::MultiSelect>(
 		this,
-		st::contactsMultiSelect,
+		st::defaultMultiSelect,
 		tr::lng_participant_filter());
 	result->resizeToWidth(st::boxWidth);
 	result->moveToLeft(0, 0);

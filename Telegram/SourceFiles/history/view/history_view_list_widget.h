@@ -87,6 +87,10 @@ public:
 	virtual bool listElementShownUnread(not_null<const Element*> view) = 0;
 	virtual bool listIsGoodForAroundPosition(
 		not_null<const Element*> view) = 0;
+	virtual void listSendBotCommand(
+		const QString &command,
+		const FullMsgId &context) = 0;
+	virtual void listHandleViaClick(not_null<UserData*> bot) = 0;
 
 };
 
@@ -168,8 +172,9 @@ public:
 	enum class AnimatedScroll {
 		Full,
 		Part,
+		None,
 	};
-	void animatedScrollTo(
+	void scrollTo(
 		int scrollTop,
 		Data::MessagePosition attachPosition,
 		int delta,
@@ -182,8 +187,9 @@ public:
 		Data::MessagePosition position,
 		Fn<bool()> overrideInitialScroll);
 
-	TextForMimeData getSelectedText() const;
-	MessageIdsList getSelectedItems() const;
+	[[nodiscard]] TextForMimeData getSelectedText() const;
+	[[nodiscard]] MessageIdsList getSelectedIds() const;
+	[[nodiscard]] SelectedItems getSelectedItems() const;
 	void cancelSelection();
 	void selectItem(not_null<HistoryItem*> item);
 	void selectItemAsGroup(not_null<HistoryItem*> item);
@@ -231,6 +237,10 @@ public:
 	bool elementIsGifPaused() override;
 	bool elementHideReply(not_null<const Element*> view) override;
 	bool elementShownUnread(not_null<const Element*> view) override;
+	void elementSendBotCommand(
+		const QString &command,
+		const FullMsgId &context) override;
+	void elementHandleViaClick(not_null<UserData*> bot) override;
 
 	~ListWidget();
 
@@ -549,5 +559,18 @@ private:
 	rpl::lifetime _viewerLifetime;
 
 };
+
+void ConfirmDeleteSelectedItems(not_null<ListWidget*> widget);
+void ConfirmForwardSelectedItems(not_null<ListWidget*> widget);
+void ConfirmSendNowSelectedItems(not_null<ListWidget*> widget);
+
+[[nodiscard]] QString WrapBotCommandInChat(
+	not_null<PeerData*> peer,
+	const QString &command,
+	const FullMsgId &context);
+[[nodiscard]] QString WrapBotCommandInChat(
+	not_null<PeerData*> peer,
+	const QString &command,
+	not_null<UserData*> bot);
 
 } // namespace HistoryView

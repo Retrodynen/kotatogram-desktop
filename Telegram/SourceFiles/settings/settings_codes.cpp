@@ -109,8 +109,8 @@ auto GenerateCodes() {
 				if (const auto strong = weak.get()) {
 					loadFor(strong);
 				} else {
-					for (const auto &[index, account] : Core::App().domain().accounts()) {
-						loadFor(account.get());
+					for (const auto &pair : Core::App().domain().accounts()) {
+						loadFor(pair.account.get());
 					}
 				}
 			}
@@ -137,14 +137,6 @@ auto GenerateCodes() {
 			window->showSettings(Settings::Type::Folders);
 		}
 	});
-	codes.emplace(qsl("autodark"), [](SessionController *window) {
-		auto text = Core::App().settings().systemDarkModeEnabled() ? qsl("Disable system dark mode?") : qsl("Enable system dark mode?");
-		Ui::show(Box<ConfirmBox>(text, [=] {
-			Core::App().settings().setSystemDarkModeEnabled(!Core::App().settings().systemDarkModeEnabled());
-			Core::App().saveSettingsDelayed();
-			Ui::hideLayer();
-		}));
-	});
 	codes.emplace(qsl("registertg"), [](SessionController *window) {
 		Platform::RegisterCustomScheme(true);
 		Ui::Toast::Show("Forced custom scheme register.");
@@ -165,6 +157,13 @@ auto GenerateCodes() {
 		}));
 	});
 #endif // Q_OS_WIN || Q_OS_MAC
+
+#if defined Q_OS_UNIX && !defined Q_OS_MAC
+	codes.emplace(qsl("installlauncher"), [](SessionController *window) {
+		Platform::InstallLauncher(true);
+		Ui::Toast::Show("Forced launcher installation.");
+	});
+#endif // Q_OS_UNIX && !Q_OS_MAC
 
 	auto audioFilters = qsl("Audio files (*.wav *.mp3);;") + FileDialog::AllFilesFilter();
 	auto audioKeys = {
@@ -203,7 +202,7 @@ auto GenerateCodes() {
 		Ui::show(
 			Box<RevokePublicLinkBox>(
 				&window->session(),
-				std::move(Fn<void()>())),
+				Fn<void()>()),
 			Ui::LayerOption::KeepOther);
 	});
 

@@ -26,6 +26,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_channel.h"
 #include "data/data_chat.h"
 #include "data/data_user.h"
+#include "data/data_document.h"
 #include "data/data_histories.h"
 #include "lang/lang_keys.h"
 #include "apiwrap.h"
@@ -41,7 +42,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 //#include "storage/storage_feed_messages.h" // #feed
 #include "support/support_helper.h"
 #include "ui/image/image.h"
-#include "ui/text_options.h"
+#include "ui/text/text_options.h"
 #include "core/crash_reports.h"
 #include "core/application.h"
 #include "base/unixtime.h"
@@ -176,27 +177,24 @@ void History::itemVanished(not_null<HistoryItem*> item) {
 		&& unreadCount() > 0) {
 		setUnreadCount(unreadCount() - 1);
 	}
-	if (peer->pinnedMessageId() == item->id) {
-		peer->clearPinnedMessage();
-	}
 }
 
-void History::setLocalDraft(std::unique_ptr<Data::Draft> &&draft) {
-	_localDraft = std::move(draft);
-}
-
-void History::takeLocalDraft(History *from) {
-	if (auto &draft = from->_localDraft) {
-		if (!draft->textWithTags.text.isEmpty() && !_localDraft) {
-			_localDraft = std::move(draft);
-
-			// Edit and reply to drafts can't migrate.
-			// Cloud drafts do not migrate automatically.
-			_localDraft->msgId = 0;
-		}
-		from->clearLocalDraft();
-		session().api().saveDraftToCloudDelayed(from);
+void History::takeLocalDraft(not_null<History*> from) {
+	const auto i = from->_drafts.find(Data::DraftKey::Local());
+	if (i == end(from->_drafts)) {
+		return;
 	}
+	auto &draft = i->second;
+	if (!draft->textWithTags.text.isEmpty()
+		&& !_drafts.contains(Data::DraftKey::Local())) {
+		// Edit and reply to drafts can't migrate.
+		// Cloud drafts do not migrate automatically.
+		draft->msgId = 0;
+
+		setLocalDraft(std::move(draft));
+	}
+	from->clearLocalDraft();
+	session().api().saveDraftToCloudDelayed(from);
 }
 
 void History::createLocalDraftFromCloud() {
@@ -229,9 +227,51 @@ void History::createLocalDraftFromCloud() {
 	}
 }
 
-void History::setCloudDraft(std::unique_ptr<Data::Draft> &&draft) {
-	_cloudDraft = std::move(draft);
-	cloudDraftTextCache.clear();
+Data::Draft *History::draft(Data::DraftKey key) const {
+	if (!key) {
+		return nullptr;
+	}
+	const auto i = _drafts.find(key);
+	return (i != _drafts.end()) ? i->second.get() : nullptr;
+}
+
+void History::setDraft(Data::DraftKey key, std::unique_ptr<Data::Draft> &&draft) {
+	if (!key) {
+		return;
+	}
+	const auto changingCloudDraft = (key == Data::DraftKey::Cloud());
+	if (changingCloudDraft) {
+		cloudDraftTextCache.clear();
+	}
+	if (draft) {
+		_drafts[key] = std::move(draft);
+	} else if (_drafts.remove(key) && changingCloudDraft) {
+		updateChatListSortPosition();
+	}
+}
+
+const Data::HistoryDrafts &History::draftsMap() const {
+	return _drafts;
+}
+
+void History::setDraftsMap(Data::HistoryDrafts &&map) {
+	for (auto &[key, draft] : _drafts) {
+		map[key] = std::move(draft);
+	}
+	_drafts = std::move(map);
+}
+
+void History::clearDraft(Data::DraftKey key) {
+	setDraft(key, nullptr);
+}
+
+void History::clearDrafts() {
+	const auto changingCloudDraft = _drafts.contains(Data::DraftKey::Cloud());
+	_drafts.clear();
+	if (changingCloudDraft) {
+		cloudDraftTextCache.clear();
+		updateChatListSortPosition();
+	}
 }
 
 Data::Draft *History::createCloudDraft(const Data::Draft *fromDraft) {
@@ -289,22 +329,6 @@ void History::clearSentDraftText(const QString &text) {
 	accumulate_max(_lastSentDraftTime, base::unixtime::now());
 }
 
-void History::setEditDraft(std::unique_ptr<Data::Draft> &&draft) {
-	_editDraft = std::move(draft);
-}
-
-void History::clearLocalDraft() {
-	_localDraft = nullptr;
-}
-
-void History::clearCloudDraft() {
-	if (_cloudDraft) {
-		_cloudDraft = nullptr;
-		cloudDraftTextCache.clear();
-		updateChatListSortPosition();
-	}
-}
-
 void History::applyCloudDraft() {
 	if (session().supportMode()) {
 		updateChatListEntry();
@@ -314,10 +338,6 @@ void History::applyCloudDraft() {
 		updateChatListSortPosition();
 		session().changes().historyUpdated(this, UpdateFlag::CloudDraft);
 	}
-}
-
-void History::clearEditDraft() {
-	_editDraft = nullptr;
 }
 
 void History::draftSavedToCloud() {
@@ -416,11 +436,17 @@ void History::destroyMessage(not_null<HistoryItem*> item) {
 					types,
 					item->id));
 			}
-		} else {
-			session().api().cancelLocalItem(item);
 		}
 		itemRemoved(item);
 	}
+	if (item->isSending()) {
+		session().api().cancelLocalItem(item);
+	}
+
+	const auto document = [&] {
+		const auto media = item->media();
+		return media ? media->document() : nullptr;
+	}();
 
 	owner().unregisterMessage(item);
 	Core::App().notifications().clearFromItem(item);
@@ -431,6 +457,23 @@ void History::destroyMessage(not_null<HistoryItem*> item) {
 
 	Assert(i != end(_messages));
 	_messages.erase(i);
+
+	if (document) {
+		session().data().documentMessageRemoved(document);
+	}
+}
+
+void History::unpinAllMessages() {
+	session().storage().remove(
+		Storage::SharedMediaRemoveAll(
+			peer->id,
+			Storage::SharedMediaType::Pinned));
+	peer->setHasPinnedMessages(false);
+	for (const auto &message : _messages) {
+		if (message->isPinned()) {
+			message->setIsPinned(false);
+		}
+	}
 }
 
 not_null<HistoryItem*> History::addNewItem(
@@ -697,6 +740,9 @@ not_null<HistoryItem*> History::addNewToBack(
 				sharedMediaTypes,
 				item->id,
 				{ from, till }));
+			if (sharedMediaTypes.test(Storage::SharedMediaType::Pinned)) {
+				peer->setHasPinnedMessages(true);
+			}
 		}
 	}
 	if (item->from()->id) {
@@ -993,11 +1039,25 @@ void History::applyServiceChanges(
 	case mtpc_messageActionPinMessage: {
 		if (const auto replyTo = data.vreply_to()) {
 			replyTo->match([&](const MTPDmessageReplyHeader &data) {
+				const auto id = data.vreply_to_msg_id().v;
 				if (item) {
-					item->history()->peer->setPinnedMessageId(
-						data.vreply_to_msg_id().v);
+					session().storage().add(Storage::SharedMediaAddSlice(
+						peer->id,
+						Storage::SharedMediaType::Pinned,
+						{ id },
+						{ id, ServerMaxMsgId }));
+					peer->setHasPinnedMessages(true);
 				}
 			});
+		}
+	} break;
+
+	case mtpc_messageActionGroupCall: {
+		const auto &d = action.c_messageActionGroupCall();
+		if (const auto channel = peer->asChannel()) {
+			channel->setGroupCall(d.vcall());
+		} else if (const auto chat = peer->asChat()) {
+			chat->setGroupCall(d.vcall());
 		}
 	} break;
 	}
@@ -1336,6 +1396,9 @@ void History::addToSharedMedia(
 				type,
 				std::move(medias[i]),
 				{ from, till }));
+			if (type == Storage::SharedMediaType::Pinned) {
+				peer->setHasPinnedMessages(true);
+			}
 		}
 	}
 }
@@ -1764,16 +1827,19 @@ TimeId History::adjustedChatListTimeId() const {
 }
 
 void History::countScrollState(int top) {
-	countScrollTopItem(top);
-	if (scrollTopItem) {
-		scrollTopOffset = (top - scrollTopItem->block()->y() - scrollTopItem->y());
-	}
+	std::tie(scrollTopItem, scrollTopOffset) = findItemAndOffset(top);
 }
 
-void History::countScrollTopItem(int top) {
+auto History::findItemAndOffset(int top) const -> std::pair<Element*, int> {
+	if (const auto element = findScrollTopItem(top)) {
+		return { element, (top - element->block()->y() - element->y()) };
+	}
+	return {};
+}
+
+auto History::findScrollTopItem(int top) const -> Element* {
 	if (isEmpty()) {
-		forgetScrollState();
-		return;
+		return nullptr;
 	}
 
 	auto itemIndex = 0;
@@ -1792,8 +1858,7 @@ void History::countScrollTopItem(int top) {
 				const auto view = block->messages[itemIndex].get();
 				itemTop = block->y() + view->y();
 				if (itemTop <= top) {
-					scrollTopItem = view;
-					return;
+					return view;
 				}
 			}
 			if (--blockIndex >= 0) {
@@ -1803,27 +1868,24 @@ void History::countScrollTopItem(int top) {
 			}
 		} while (true);
 
-		scrollTopItem = blocks.front()->messages.front().get();
-	} else {
-		// go forward through history while we don't find the last item that starts above
-		for (auto blocksCount = int(blocks.size()); blockIndex < blocksCount; ++blockIndex) {
-			const auto &block = blocks[blockIndex];
-			for (auto itemsCount = int(block->messages.size()); itemIndex < itemsCount; ++itemIndex) {
-				itemTop = block->y() + block->messages[itemIndex]->y();
-				if (itemTop > top) {
-					Assert(itemIndex > 0 || blockIndex > 0);
-					if (itemIndex > 0) {
-						scrollTopItem = block->messages[itemIndex - 1].get();
-					} else {
-						scrollTopItem = blocks[blockIndex - 1]->messages.back().get();
-					}
-					return;
-				}
-			}
-			itemIndex = 0;
-		}
-		scrollTopItem = blocks.back()->messages.back().get();
+		return blocks.front()->messages.front().get();
 	}
+	// go forward through history while we don't find the last item that starts above
+	for (auto blocksCount = int(blocks.size()); blockIndex < blocksCount; ++blockIndex) {
+		const auto &block = blocks[blockIndex];
+		for (auto itemsCount = int(block->messages.size()); itemIndex < itemsCount; ++itemIndex) {
+			itemTop = block->y() + block->messages[itemIndex]->y();
+			if (itemTop > top) {
+				Assert(itemIndex > 0 || blockIndex > 0);
+				if (itemIndex > 0) {
+					return block->messages[itemIndex - 1].get();
+				}
+				return blocks[blockIndex - 1]->messages.back().get();
+			}
+		}
+		itemIndex = 0;
+	}
+	return blocks.back()->messages.back().get();
 }
 
 void History::getNextScrollTopItem(HistoryBlock *block, int32 i) {
@@ -3006,7 +3068,6 @@ void History::clear(ClearType type) {
 		clearSharedMedia();
 		clearLastKeyboard();
 		if (const auto channel = peer->asChannel()) {
-			channel->clearPinnedMessage();
 			//if (const auto feed = channel->feed()) { // #feed
 			//	// Should be after resetting the _lastMessage.
 			//	feed->historyCleared(this);

@@ -101,6 +101,7 @@ void SetRecentStickersLimit(int limit);
 
 DeclareSetting(int, UserpicCornersType);
 DeclareSetting(bool, ShowTopBarUserpic);
+DeclareSetting(bool, GtkIntegration);
 DeclareSetting(bool, DisableTrayCounter);
 DeclareSetting(bool, UseTelegramPanelIcon);
 DeclareSetting(int, CustomAppIcon);
@@ -145,7 +146,6 @@ struct LocalFolder {
 
 		Type type;
 		int32 id;
-		uint64 accessHash = 0;
 
 		inline bool operator==(const Peer& other) {
 			return type == other.type

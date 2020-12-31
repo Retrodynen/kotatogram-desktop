@@ -15,14 +15,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_abstract_structure.h"
 #include "data/data_chat.h"
 #include "data/data_channel.h"
-#include "ui/text_options.h"
+#include "ui/text/text_options.h"
 #include "core/core_settings.h"
 #include "core/application.h"
 #include "mainwidget.h"
 #include "layout.h"
 #include "lang/lang_keys.h"
 #include "app.h"
-#include "styles/style_history.h"
+#include "styles/style_chat.h"
 
 namespace HistoryView {
 namespace {
@@ -355,7 +355,7 @@ QSize Service::performCountCurrentSize(int newWidth) {
 		auto nwidth = qMax(contentWidth - st::msgServicePadding.left() - st::msgServicePadding.right(), 0);
 		if (nwidth != item->_textWidth) {
 			item->_textWidth = nwidth;
-			item->_textHeight = item->_text.countHeight(nwidth);
+			item->_textHeight = item->_postfixedText.countHeight(nwidth);
 		}
 		if (contentWidth >= maxWidth()) {
 			newHeight += minHeight();
@@ -375,8 +375,8 @@ QSize Service::performCountOptimalSize() {
 	const auto item = message();
 	const auto media = this->media();
 
-	auto maxWidth = item->_text.maxWidth() + st::msgServicePadding.left() + st::msgServicePadding.right();
-	auto minHeight = item->_text.minHeight();
+	auto maxWidth = item->_postfixedText.maxWidth() + st::msgServicePadding.left() + st::msgServicePadding.right();
+	auto minHeight = item->_postfixedText.minHeight();
 	if (media) {
 		media->initDimensions();
 	}
@@ -449,12 +449,12 @@ void Service::draw(
 
 	auto trect = QRect(g.left(), st::msgServiceMargin.top(), g.width(), height).marginsAdded(-st::msgServicePadding);
 
-	ServiceMessagePainter::paintComplexBubble(p, g.left(), g.width(), item->_text, trect);
+	ServiceMessagePainter::paintComplexBubble(p, g.left(), g.width(), item->_postfixedText, trect);
 
 	p.setBrush(Qt::NoBrush);
 	p.setPen(st::msgServiceFg);
 	p.setFont(st::msgServiceFont);
-	item->_text.draw(p, trect.x(), trect.y(), trect.width(), Qt::AlignCenter, 0, -1, selection, false);
+	item->_postfixedText.draw(p, trect.x(), trect.y(), trect.width(), Qt::AlignCenter, 0, -1, selection, false);
 
 	p.restoreTextPalette();
 
@@ -512,7 +512,7 @@ TextState Service::textState(QPoint point, StateRequest request) const {
 	if (trect.contains(point)) {
 		auto textRequest = request.forText();
 		textRequest.align = style::al_center;
-		result = TextState(item, item->_text.getState(
+		result = TextState(item, item->_postfixedText.getState(
 			point - trect.topLeft(),
 			trect.width(),
 			textRequest));

@@ -11,11 +11,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/effects/ripple_animation.h"
 #include "ui/image/image.h"
 #include "ui/toast/toast.h"
-#include "ui/text_options.h"
+#include "ui/text/text_options.h"
 #include "history/history.h"
 #include "history/history_message.h"
 #include "history/view/history_view_service_message.h"
 #include "history/view/media/history_view_document.h"
+#include "core/click_handler_types.h"
 #include "mainwindow.h"
 #include "media/audio/media_audio.h"
 #include "media/player/media_player_instance.h"
@@ -27,8 +28,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 #include "window/window_session_controller.h"
 #include "facades.h"
+#include "base/qt_adapters.h"
 #include "styles/style_widgets.h"
-#include "styles/style_history.h"
+#include "styles/style_chat.h"
 
 #include <QtGui/QGuiApplication>
 
@@ -44,7 +46,8 @@ void HistoryMessageVia::create(
 	bot = owner->user(userId);
 	maxWidth = st::msgServiceNameFont->width(
 		tr::lng_inline_bot_via(tr::now, lt_inline_bot, '@' + bot->username));
-	link = std::make_shared<LambdaClickHandler>([bot = this->bot] {
+	link = std::make_shared<LambdaClickHandler>([bot = this->bot](
+			ClickContext context) {
 		if (QGuiApplication::keyboardModifiers() == Qt::ControlModifier) {
 			if (const auto window = App::wnd()) {
 				if (const auto controller = window->sessionController()) {
@@ -53,7 +56,12 @@ void HistoryMessageVia::create(
 				}
 			}
 		}
-		App::insertBotCommand('@' + bot->username);
+		const auto my = context.other.value<ClickHandlerContext>();
+		if (const auto delegate = my.elementDelegate ? my.elementDelegate() : nullptr) {
+			delegate->elementHandleViaClick(bot);
+		} else {
+			App::insertBotCommand('@' + bot->username);
+		}
 	});
 }
 
@@ -109,7 +117,7 @@ HiddenSenderInfo::HiddenSenderInfo(const QString &name)
 , colorPeerId(Data::FakePeerIdForJustName(name))
 , userpic(Data::PeerUserpicColor(colorPeerId), name) {
 	nameText.setText(st::msgNameStyle, name, Ui::NameTextOptions());
-	const auto parts = name.trimmed().split(' ', QString::SkipEmptyParts);
+	const auto parts = name.trimmed().split(' ', base::QStringSkipEmptyParts);
 	firstName = parts[0];
 	for (const auto &part : parts.mid(1)) {
 		if (!lastName.isEmpty()) {
@@ -448,6 +456,14 @@ void ReplyMarkupClickHandler::onClickImpl() const {
 QString ReplyMarkupClickHandler::buttonText() const {
 	if (const auto button = getButton()) {
 		return button->text;
+	}
+	return QString();
+}
+
+// Returns the full text of the corresponding button.
+QString ReplyMarkupClickHandler::buttonDataString() const {
+	if (const auto button = getButton()) {
+		return QString(button->data);
 	}
 	return QString();
 }

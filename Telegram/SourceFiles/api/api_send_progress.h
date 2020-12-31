@@ -31,6 +31,7 @@ enum class SendProgressType {
 	ChooseLocation,
 	ChooseContact,
 	PlayGame,
+	Speaking,
 };
 
 struct SendProgress {
@@ -89,6 +90,8 @@ private:
 
 	void send(const Key &key, int progress);
 	void done(const MTPBool &result, mtpRequestId requestId);
+
+	[[nodiscard]] bool skipRequest(const Key &key) const;
 
 	const not_null<Main::Session*> _session;
 	base::flat_map<Key, mtpRequestId> _requests;

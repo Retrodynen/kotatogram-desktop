@@ -10,7 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/filters/edit_filter_chats_list.h"
 #include "chat_helpers/emoji_suggestions_widget.h"
 #include "ui/layers/generic_box.h"
-#include "ui/text_options.h"
+#include "ui/text/text_options.h"
 #include "ui/text/text_utilities.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/buttons.h"
@@ -419,7 +419,7 @@ void EditExceptions(
 	const auto include = (options & Flag::Contacts) != Flags(0);
 	const auto rules = data->current();
 	auto controller = std::make_unique<EditFilterChatsListController>(
-		window,
+		&window->session(),
 		(include
 			? tr::lng_filters_include_title()
 			: tr::lng_filters_exclude_title()),
@@ -431,7 +431,7 @@ void EditExceptions(
 	auto initBox = [=](not_null<PeerListBox*> box) {
 		box->setCloseByOutsideClick(false);
 		box->addButton(tr::lng_settings_save(), crl::guard(context, [=] {
-			const auto peers = box->peerListCollectSelectedRows();
+			const auto peers = box->collectSelectedRows();
 			const auto rules = data->current();
 			auto &&histories = ranges::view::all(
 				peers

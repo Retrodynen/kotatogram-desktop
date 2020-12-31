@@ -24,78 +24,58 @@ namespace {
 std::map<int, const char*> BetaLogs() {
 	return {
 	{
-		1009020,
-		"- Fix crash in shared links search.\n"
+		2004006,
+		"- Fix image compression option when sending files with drag-n-drop.\n"
 
-		"- Fix blurred thumbnails in albums with video files.\n"
+		"- Fix caption text selection in media albums.\n"
 
-		"- Fix a possible crash in animated stickers rendering."
+		"- Fix drafts display in personal chats in the chats list.\n"
+
+		"- Bug fixes and other minor improvements.\n"
 	},
 	{
-		1009022,
-		"- Organize chats into Chat Folders if you have too many chats.\n"
+		2004008,
+		"- Upgrade several third party libraries to latest versions.\n"
 	},
 	{
-		2000001,
-		"- Switch between folders using Ctrl+1, ..., Ctrl+8.\n"
+		2004010,
+		"- Use inline bots and sticker by emoji suggestions in channel comments.\n"
 
-		"- Fix crash when a pinned in folder chat was added to archive.\n"
-
-		"- Fix font issues in Linux version."
+		"- Lock voice message recording, listen to your voice message before sending.\n"
 	},
 	{
-		2001008,
-		"- Add support for full group message history export.\n"
+		2004011,
+		"- Improve locked voice message recording.\n"
 
-		"- Allow export of a single chat message history in JSON format."
+		"- Fix main window closing to tray on Windows.\n"
+
+		"- Fix crash in bot command sending.\n"
+
+		"- Fix adding additional photos when sending an album to a group with enabled slow mode.\n"
 	},
 	{
-		2001014,
-		"- Support for multiple accounts."
+		2004012,
+		"- Voice chats in groups. (alpha version)\n"
 	},
 	{
-		2001017,
-		"- Fix messages editing in a non-active account.\n"
+		2004014,
+		"- Create voice chats in legacy groups.\n"
 
-		"- Fix large animated emoji messages editing.\n"
+		"- Fix sticker pack opening.\n"
 
-		"- Fix high definition GIF animations opening in media viewer.\n"
-
-		"- Multiple crash fixes."
+		"- Fix group status display.\n"
+		
+		"- Fix group members display.\n"
 	},
 	{
-		2001018,
-		"- Fix a possible crash in Picture-in-Picture video player.\n"
+		2004015,
+		"- Improve design of voice chats.\n"
 
-		"- Fix copying links from message texts.\n"
+		"- Fix sending of voice messages as replies.\n"
 
-		"- Raise file size limit to 2000 MB.\n"
+		"- Fix 'Open With' menu position in macOS.\n"
 
-		"- Allow using system window frame in Windows and Linux."
-	},
-	{
-		2001019,
-		"- File uploading in an inactive account correctly finishes.\n"
-
-		"- Stickers panel works correctly after switching between accounts.\n"
-
-		"- Large .webp files are not shown as stickers.\n"
-
-		"- MacBook TouchBar support was fully rewritten with fixes for multiple accounts.\n"
-
-		"- Custom window title bar works in all Linux versions.\n"
-
-		"- Passcode doesn't auto-lock while you're active in other apps on Linux X11."
-	},
-	{
-		2001021,
-		"- Edit your scheduled messages.\n"
-
-		"- See the unread messages indicator for your additional accounts on the main menu button.\n"
-
-		"- Use Auto-Night Mode to make Telegram night mode match the system Dark Mode settings.\n"
-
-		"- Enjoy dark native window frame for Telegram night mode on Windows.\n"
+		"- Fix freeze on secondary screen disconnect.\n"
 	},
 	};
 };

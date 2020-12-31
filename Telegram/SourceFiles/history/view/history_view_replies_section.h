@@ -14,7 +14,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/timer.h"
 
 class History;
-enum class CompressConfirm;
 enum class SendMediaType;
 struct SendingAlbum;
 
@@ -27,7 +26,6 @@ struct SendOptions;
 } // namespace Api
 
 namespace Storage {
-struct PreparedList;
 } // namespace Storage
 
 namespace Ui {
@@ -35,8 +33,9 @@ class ScrollArea;
 class PlainShadow;
 class FlatButton;
 class HistoryDownButton;
-template <typename Widget>
-class SlideWrap;
+class PinnedBar;
+struct PreparedList;
+class SendFilesWay;
 } // namespace Ui
 
 namespace Profile {
@@ -52,6 +51,10 @@ class RepliesList;
 } // namespace Data
 
 namespace HistoryView {
+
+namespace Controls {
+struct VoiceToSend;
+} // namespace Controls
 
 class Element;
 class TopBarWidget;
@@ -72,6 +75,7 @@ public:
 
 	[[nodiscard]] not_null<History*> history() const;
 	Dialogs::RowDescriptor activeChat() const override;
+	bool preventsClose(Fn<void()> &&continueCallback) const override;
 
 	bool hasTopBarShadow() const override {
 		return true;
@@ -83,7 +87,7 @@ public:
 	bool showInternal(
 		not_null<Window::SectionMemento*> memento,
 		const Window::SectionShow &params) override;
-	std::unique_ptr<Window::SectionMemento> createMemento() override;
+	std::shared_ptr<Window::SectionMemento> createMemento() override;
 	bool showMessage(
 		PeerId peerId,
 		const Window::SectionShow &params,
@@ -127,6 +131,10 @@ public:
 	bool listElementHideReply(not_null<const Element*> view) override;
 	bool listElementShownUnread(not_null<const Element*> view) override;
 	bool listIsGoodForAroundPosition(not_null<const Element*> view) override;
+	void listSendBotCommand(
+		const QString &command,
+		const FullMsgId &context) override;
+	void listHandleViaClick(not_null<UserData*> bot) override;
 
 protected:
 	void resizeEvent(QResizeEvent *e) override;
@@ -151,14 +159,14 @@ private:
 		HistoryItem *originItem = nullptr);
 	bool showAtPositionNow(
 		Data::MessagePosition position,
-		HistoryItem *originItem);
+		HistoryItem *originItem,
+		anim::type animated = anim::type::normal);
 	void finishSending();
 
 	void setupComposeControls();
 
 	void setupRoot();
 	void setupRootView();
-	void refreshRootView();
 	void setupDragArea();
 	void sendReadTillRequest();
 	void readTill(not_null<HistoryItem*> item);
@@ -170,7 +178,6 @@ private:
 	void updateScrollDownPosition();
 	void updatePinnedVisibility();
 
-	void confirmSendNowSelected();
 	void confirmDeleteSelected();
 	void confirmForwardSelected();
 	void clearSelected();
@@ -178,7 +185,7 @@ private:
 
 	void send();
 	void send(Api::SendOptions options);
-	void sendVoice(QByteArray bytes, VoiceWaveform waveform, int duration);
+	void sendVoice(Controls::VoiceToSend &&data);
 	void edit(
 		not_null<HistoryItem*> item,
 		Api::SendOptions options,
@@ -188,6 +195,7 @@ private:
 	[[nodiscard]] MsgId replyToId() const;
 	[[nodiscard]] HistoryItem *lookupRoot() const;
 	[[nodiscard]] bool computeAreComments() const;
+	void orderWidgets();
 
 	void pushReplyReturn(not_null<HistoryItem*> item);
 	void computeCurrentReplyReturn();
@@ -195,29 +203,29 @@ private:
 	void restoreReplyReturns(const std::vector<MsgId> &list);
 	void checkReplyReturns();
 	void recountChatWidth();
+	void replyToMessage(FullMsgId itemId);
+	void refreshTopBarActiveChat();
 
 	void uploadFile(const QByteArray &fileContent, SendMediaType type);
 	bool confirmSendingFiles(
 		QImage &&image,
 		QByteArray &&content,
-		CompressConfirm compressed,
+		std::optional<bool> overrideSendImagesAsPhotos = std::nullopt,
 		const QString &insertTextOnCancel = QString());
 	bool confirmSendingFiles(
-		Storage::PreparedList &&list,
-		CompressConfirm compressed,
+		Ui::PreparedList &&list,
 		const QString &insertTextOnCancel = QString());
 	bool confirmSendingFiles(
 		not_null<const QMimeData*> data,
-		CompressConfirm compressed,
+		std::optional<bool> overrideSendImagesAsPhotos = std::nullopt,
 		const QString &insertTextOnCancel = QString());
-	bool showSendingFilesError(const Storage::PreparedList &list) const;
-	void uploadFilesAfterConfirmation(
-		Storage::PreparedList &&list,
-		SendMediaType type,
+	bool showSendingFilesError(const Ui::PreparedList &list) const;
+	void sendingFilesConfirmed(
+		Ui::PreparedList &&list,
+		Ui::SendFilesWay way,
 		TextWithTags &&caption,
-		MsgId replyTo,
 		Api::SendOptions options,
-		std::shared_ptr<SendingAlbum> album);
+		bool ctrlShiftEnter);
 
 	void sendExistingDocument(not_null<DocumentData*> document);
 	bool sendExistingDocument(
@@ -250,12 +258,10 @@ private:
 	std::unique_ptr<ComposeControls> _composeControls;
 	bool _skipScrollEvent = false;
 
-	Ui::Text::String _rootTitle;
-	Ui::Text::String _rootMessage;
-	object_ptr<Ui::SlideWrap<Ui::RpWidget>> _rootView;
+	std::unique_ptr<Ui::PinnedBar> _rootView;
 	int _rootViewHeight = 0;
-	object_ptr<Ui::PlainShadow> _rootShadow;
 	bool _rootViewInited = false;
+	rpl::variable<bool> _rootVisible = false;
 
 	std::unique_ptr<Ui::ScrollArea> _scroll;
 

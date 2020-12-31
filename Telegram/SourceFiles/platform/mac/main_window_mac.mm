@@ -124,6 +124,41 @@ private:
 
 };
 
+[[nodiscard]] QImage TrayIconBack(bool darkMode, bool selected = false) {
+	static const auto WithColor = [](QColor color) {
+		return st::macTrayIcon.instance(color, 100);
+	};
+
+	QImage iconImageLight(cWorkingDir() + "tdata/icon.png");
+	QImage iconImageDark(cWorkingDir() + "tdata/icon_dark.png");
+	QImage iconImageLightSelected(cWorkingDir() + "tdata/icon_selected.png");
+	QImage iconImageDarkSelected(cWorkingDir() + "tdata/icon_dark_selected.png");
+
+
+	static const auto LightModeResult = iconImageLight.isNull()
+		? WithColor({ 0, 0, 0, 180 })
+		: iconImageLight;
+	static const auto DarkModeResult = iconImageDark.isNull()
+		? WithColor({ 255, 255, 255 })
+		: iconImageLight.isNull()
+		? iconImageDark
+		: iconImageLight;
+	static const auto LightModeSelectedResult = iconImageLightSelected.isNull()
+		? (iconImageLight.isNull()
+			? DarkModeResult
+			: iconImageLight)
+		: iconImageLightSelected;
+	static const auto DarkModeSelectedResult = iconImageDarkSelected.isNull()
+		? DarkModeResult
+		: iconImageDarkSelected;
+
+	auto result = darkMode
+		? (selected ? DarkModeSelectedResult : DarkModeResult)
+		: (selected ? LightModeSelectedResult : LightModeResult);
+	result.detach();
+	return result;
+}
+
 } // namespace
 
 class MainWindow::Private {
@@ -200,7 +235,6 @@ private:
 - (void) darkModeChanged:(NSNotification *)aNotification {
 	Core::Sandbox::Instance().customEnterFromEventLoop([&] {
 		Core::App().settings().setSystemDarkMode(Platform::IsDarkMode());
-		Core::App().domain().notifyUnreadBadgeChanged();
 	});
 }
 
@@ -488,17 +522,6 @@ MainWindow::MainWindow(not_null<Window::Controller*> controller)
 	auto forceOpenGL = std::make_unique<QOpenGLWidget>(this);
 #endif // !OS_MAC_OLD
 
-	QImage iconImage(cWorkingDir() + "tdata/icon.png");
-	QImage iconImageSelected(cWorkingDir() + "tdata/icon_selected.png");
-
-	trayImg = iconImage.isNull()
-		? st::macTrayIcon.instance(QColor(0, 0, 0, 180), 100)
-		: iconImage;
-
-	trayImgSel = iconImageSelected.isNull()
-		? st::macTrayIcon.instance(QColor(255, 255, 255), 100)
-		: iconImageSelected;
-
 	_hideAfterFullScreenTimer.setCallback([this] { hideAndDeactivate(); });
 
 	subscribe(Window::Theme::Background(), [this](const Window::Theme::BackgroundUpdate &data) {
@@ -554,10 +577,6 @@ void MainWindow::hideAndDeactivate() {
 	hide();
 }
 
-QImage MainWindow::psTrayIcon(bool selected) const {
-	return selected ? trayImgSel : trayImg;
-}
-
 void MainWindow::psShowTrayMenu() {
 }
 
@@ -577,14 +596,13 @@ void MainWindow::psTrayMenuUpdated() {
 void MainWindow::psSetupTrayIcon() {
 	if (!trayIcon) {
 		trayIcon = new QSystemTrayIcon(this);
-
-		QIcon icon(QPixmap::fromImage(psTrayIcon(), Qt::ColorOnly));
-		icon.addPixmap(QPixmap::fromImage(psTrayIcon(true), Qt::ColorOnly), QIcon::Selected);
-
-		trayIcon->setIcon(icon);
+		trayIcon->setIcon(generateIconForTray(
+			Core::App().unreadBadge(),
+			Core::App().unreadBadgeMuted()));
 		attachToTrayIcon(trayIcon);
+	} else {
+		updateIconCounters();
 	}
-	updateIconCounters();
 
 	trayIcon->show();
 }
@@ -662,21 +680,31 @@ void MainWindow::updateIconCounters() {
 	_private->setWindowBadge(string);
 
 	if (trayIcon) {
-		bool dm = Platform::IsDarkMenuBar();
-		auto &bg = (muted ? st::trayCounterBgMute : st::trayCounterBg);
-		QIcon icon;
-		QImage img(psTrayIcon(dm)), imgsel(psTrayIcon(true));
-		img.detach();
-		imgsel.detach();
-		if (!cDisableTrayCounter()) {
-			int32 size = 22 * cIntRetinaFactor();
-			_placeCounter(img, size, counter, bg, (dm && muted) ? st::trayCounterFgMacInvert : st::trayCounterFg);
-			_placeCounter(imgsel, size, counter, st::trayCounterBgMacInvert, st::trayCounterFgMacInvert);
-		}
-		icon.addPixmap(App::pixmapFromImageInPlace(std::move(img)));
-		icon.addPixmap(App::pixmapFromImageInPlace(std::move(imgsel)), QIcon::Selected);
-		trayIcon->setIcon(icon);
+		trayIcon->setIcon(generateIconForTray(counter, muted));
 	}
+}
+
+QIcon MainWindow::generateIconForTray(int counter, bool muted) const {
+	auto result = QIcon();
+	auto lightMode = TrayIconBack(false);
+	auto darkMode = TrayIconBack(true);
+	auto lightModeActive = TrayIconBack(false, true);
+	auto darkModeActive = TrayIconBack(true, true);
+	lightModeActive.detach();
+	darkModeActive.detach();
+	const auto size = 22 * cIntRetinaFactor();
+	const auto &bg = (muted ? st::trayCounterBgMute : st::trayCounterBg);
+	if (!cDisableTrayCounter()) {
+		_placeCounter(lightMode, size, counter, bg, st::trayCounterFg);
+		_placeCounter(darkMode, size, counter, bg, muted ? st::trayCounterFgMacInvert : st::trayCounterFg);
+		_placeCounter(lightModeActive, size, counter, st::trayCounterBgMacInvert, st::trayCounterFgMacInvert);
+		_placeCounter(darkModeActive, size, counter, st::trayCounterBgMacInvert, st::trayCounterFgMacInvert);
+	}
+	result.addPixmap(App::pixmapFromImageInPlace(std::move(lightMode)), QIcon::Normal, QIcon::Off);
+	result.addPixmap(App::pixmapFromImageInPlace(std::move(darkMode)), QIcon::Normal, QIcon::On);
+	result.addPixmap(App::pixmapFromImageInPlace(std::move(lightModeActive)), QIcon::Active, QIcon::Off);
+	result.addPixmap(App::pixmapFromImageInPlace(std::move(darkModeActive)), QIcon::Active, QIcon::On);
+	return result;
 }
 
 void MainWindow::initShadows() {
@@ -734,10 +762,7 @@ void MainWindow::createGlobalMenu() {
 		if (!sessionController()) {
 			return;
 		}
-		Ui::show(Box<PeerListBox>(std::make_unique<ContactsBoxController>(sessionController()), [](not_null<PeerListBox*> box) {
-			box->addButton(tr::lng_close(), [box] { box->closeBox(); });
-			box->addLeftButton(tr::lng_profile_add_contact(), [] { App::wnd()->onShowAddContact(); });
-		}));
+		Ui::show(PrepareContactsBox(sessionController()));
 	}));
 	psAddContact = window->addAction(tr::lng_mac_menu_add_contact(tr::now), App::wnd(), SLOT(onShowAddContact()));
 	window->addSeparator();

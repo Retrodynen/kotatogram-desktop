@@ -56,7 +56,7 @@ void SharedMediaShowOverview(
 				return;
 			}
 		}
-		windows.front()->showSection(Info::Memento(
+		windows.front()->showSection(std::make_shared<Info::Memento>(
 			history->peer,
 			Info::Section(type)));
 	}
@@ -123,7 +123,8 @@ rpl::producer<SparseIdsSlice> SharedMediaViewer(
 		using AllRemoved = Storage::SharedMediaRemoveAll;
 		session->storage().sharedMediaAllRemoved(
 		) | rpl::filter([=](const AllRemoved &update) {
-			return (update.peerId == key.peerId);
+			return (update.peerId == key.peerId)
+				&& (update.types.test(key.type));
 		}) | rpl::filter([=] {
 			return builder->removeAll();
 		}) | rpl::start_with_next(pushNextSnapshot, lifetime);

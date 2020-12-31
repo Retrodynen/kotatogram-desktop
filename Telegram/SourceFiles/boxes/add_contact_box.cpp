@@ -27,7 +27,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/toast/toast.h"
 #include "ui/special_buttons.h"
 #include "ui/special_fields.h"
-#include "ui/text_options.h"
+#include "ui/text/text_options.h"
 #include "ui/unread_badge.h"
 #include "ui/ui_utility.h"
 #include "data/data_channel.h"
@@ -632,7 +632,7 @@ void GroupInfoBox::submit() {
 				not_null<PeerListBox*> box) {
 			auto create = [box, title, weak] {
 				if (weak) {
-					auto rows = box->peerListCollectSelectedRows();
+					auto rows = box->collectSelectedRows();
 					if (!rows.empty()) {
 						weak->createGroup(box, title, rows);
 					}
@@ -643,7 +643,8 @@ void GroupInfoBox::submit() {
 		};
 		Ui::show(
 			Box<PeerListBox>(
-				std::make_unique<AddParticipantsBoxController>(_navigation),
+				std::make_unique<AddParticipantsBoxController>(
+					&_navigation->session()),
 				std::move(initBox)),
 			Ui::LayerOption::KeepOther);
 	}

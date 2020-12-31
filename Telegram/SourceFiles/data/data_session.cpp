@@ -31,12 +31,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "storage/storage_account.h"
 #include "storage/storage_encrypted_file.h"
 #include "media/player/media_player_instance.h" // instance()->play()
+#include "media/audio/media_audio.h"
 #include "boxes/abstract_box.h"
 #include "passport/passport_form_controller.h"
 #include "window/themes/window_theme.h"
 #include "lang/lang_keys.h" // tr::lng_deleted(tr::now) in user name
 #include "data/stickers/data_stickers.h"
 #include "data/data_changes.h"
+#include "data/data_group_call.h"
 #include "data/data_media_types.h"
 #include "data/data_folder.h"
 #include "data/data_channel.h"
@@ -88,7 +90,7 @@ void CheckForSwitchInlineButton(not_null<HistoryItem*> item) {
 		return;
 	}
 	if (const auto user = item->history()->peer->asUser()) {
-		if (!user->isBot() || !user->botInfo->inlineReturnPeerId) {
+		if (!user->isBot() || !user->botInfo->inlineReturnTo.key) {
 			return;
 		}
 		if (const auto markup = item->Get<HistoryMessageReplyMarkup>()) {
@@ -152,6 +154,8 @@ std::vector<UnavailableReason> ExtractUnavailableReasons(
 		return size.match([](const MTPDphotoSizeEmpty &) {
 			return kInvalid;
 		}, [](const MTPDphotoStrippedSize &) {
+			return kInvalid;
+		}, [](const MTPDphotoPathSize &) {
 			return kInvalid;
 		}, [](const auto &data) {
 			return (data.vw().v * data.vh().v);
@@ -600,7 +604,12 @@ not_null<PeerData*> Session::processChat(const MTPChat &data) {
 			});
 		}
 
-		chat->setFlags(data.vflags().v);
+		const auto callFlag = MTPDchat::Flag::f_call_not_empty;
+		const auto callNotEmpty = (data.vflags().v & callFlag)
+			|| (chat->groupCall()
+				&& chat->groupCall()->fullCount() > 0);
+		chat->setFlags(data.vflags().v
+			| (callNotEmpty ? callFlag : MTPDchat::Flag(0)));
 		chat->count = data.vparticipants_count().v;
 
 		if (canAddMembers != chat->canAddMembers()) {
@@ -647,13 +656,21 @@ not_null<PeerData*> Session::processChat(const MTPChat &data) {
 			channel->setDefaultRestrictions(
 				MTP_chatBannedRights(MTP_flags(0), MTP_int(0)));
 		}
+		const auto callFlag = MTPDchannel::Flag::f_call_not_empty;
+		const auto callNotEmpty = (data.vflags().v & callFlag)
+			|| (channel->groupCall()
+				&& channel->groupCall()->fullCount() > 0);
 		if (minimal) {
 			auto mask = 0
 				| MTPDchannel::Flag::f_broadcast
 				| MTPDchannel::Flag::f_verified
 				| MTPDchannel::Flag::f_megagroup
+				| MTPDchannel::Flag::f_call_active
+				| MTPDchannel::Flag::f_call_not_empty
 				| MTPDchannel_ClientFlag::f_forbidden;
-			channel->setFlags((channel->flags() & ~mask) | (data.vflags().v & mask));
+			channel->setFlags((channel->flags() & ~mask)
+				| (data.vflags().v & mask)
+				| (callNotEmpty ? callFlag : MTPDchannel::Flag(0)));
 			if (channel->input.type() == mtpc_inputPeerEmpty
 				|| channel->inputChannel.type() == mtpc_inputChannelEmpty) {
 				channel->setAccessHash(data.vaccess_hash().value_or_empty());
@@ -682,7 +699,8 @@ not_null<PeerData*> Session::processChat(const MTPChat &data) {
 			} else {
 				channel->setUnavailableReasons({});
 			}
-			channel->setFlags(data.vflags().v);
+			channel->setFlags(data.vflags().v
+				| (callNotEmpty ? callFlag : MTPDchannel::Flag(0)));
 			//if (const auto feedId = data.vfeed_id()) { // #feed
 			//	channel->setFeed(feed(feedId->v));
 			//} else {
@@ -785,6 +803,56 @@ void Session::applyMaximumChatVersions(const MTPVector<MTPChat> &data) {
 			}
 		}, [](const auto &) {
 		});
+	}
+}
+
+void Session::registerGroupCall(not_null<GroupCall*> call) {
+	_groupCalls.emplace(call->id(), call);
+}
+
+void Session::unregisterGroupCall(not_null<GroupCall*> call) {
+	_groupCalls.remove(call->id());
+}
+
+GroupCall *Session::groupCall(uint64 callId) const {
+	const auto i = _groupCalls.find(callId);
+	return (i != end(_groupCalls)) ? i->second.get() : nullptr;
+}
+
+auto Session::invitedToCallUsers(uint64 callId) const
+-> const base::flat_set<not_null<UserData*>> & {
+	static const base::flat_set<not_null<UserData*>> kEmpty;
+	const auto i = _invitedToCallUsers.find(callId);
+	return (i != _invitedToCallUsers.end()) ? i->second : kEmpty;
+}
+
+void Session::registerInvitedToCallUser(
+		uint64 callId,
+		not_null<PeerData*> peer,
+		not_null<UserData*> user) {
+	const auto call = peer->groupCall();
+	if (call && call->id() == callId) {
+		const auto inCall = ranges::contains(
+			call->participants(),
+			user,
+			&Data::GroupCall::Participant::user);
+		if (inCall) {
+			return;
+		}
+	}
+	_invitedToCallUsers[callId].emplace(user);
+	_invitesToCalls.fire({ callId, user });
+}
+
+void Session::unregisterInvitedToCallUser(
+		uint64 callId,
+		not_null<UserData*> user) {
+	const auto i = _invitedToCallUsers.find(callId);
+	if (i != _invitedToCallUsers.end()) {
+		i->second.remove(user);
+		if (i->second.empty()) {
+			_invitedToCallUsers.erase(i);
+		}
 	}
 }
 
@@ -1099,6 +1167,7 @@ void Session::setupMigrationViewer() {
 			return;
 		}
 
+		chat->clearGroupCall();
 		if (const auto from = historyLoaded(chat)) {
 			if (const auto to = historyLoaded(channel)) {
 				if (to->inChatList() && from->inChatList()) {
@@ -1426,6 +1495,14 @@ rpl::producer<not_null<HistoryItem*>> Session::animationPlayInlineRequest() cons
 
 rpl::producer<not_null<const HistoryItem*>> Session::itemRemoved() const {
 	return _itemRemoved.events();
+}
+
+rpl::producer<not_null<const HistoryItem*>> Session::itemRemoved(
+		FullMsgId itemId) const {
+	return itemRemoved(
+	) | rpl::filter([=](not_null<const HistoryItem*> item) {
+		return (itemId == item->fullId());
+	});
 }
 
 void Session::notifyViewRemoved(not_null<const ViewElement*> view) {
@@ -2115,6 +2192,15 @@ void Session::updateSendActionAnimation(
 	_sendActionAnimationUpdate.fire(std::move(update));
 }
 
+auto Session::speakingAnimationUpdated() const
+-> rpl::producer<not_null<History*>> {
+	return _speakingAnimationUpdate.events();
+}
+
+void Session::updateSpeakingAnimation(not_null<History*> history) {
+	_speakingAnimationUpdate.fire_copy(history);
+}
+
 int Session::unreadBadge() const {
 	return computeUnreadBadge(_chatsList.unreadState());
 }
@@ -2285,7 +2371,7 @@ not_null<PhotoData*> Session::photo(
 		const QByteArray &fileReference,
 		TimeId date,
 		int32 dc,
-		bool hasSticker,
+		bool hasStickers,
 		const QByteArray &inlineThumbnailBytes,
 		const ImageWithLocation &small,
 		const ImageWithLocation &thumbnail,
@@ -2299,7 +2385,7 @@ not_null<PhotoData*> Session::photo(
 		fileReference,
 		date,
 		dc,
-		hasSticker,
+		hasStickers,
 		inlineThumbnailBytes,
 		small,
 		thumbnail,
@@ -2460,7 +2546,7 @@ void Session::photoApplyFields(
 		const QByteArray &fileReference,
 		TimeId date,
 		int32 dc,
-		bool hasSticker,
+		bool hasStickers,
 		const QByteArray &inlineThumbnailBytes,
 		const ImageWithLocation &small,
 		const ImageWithLocation &thumbnail,
@@ -2472,7 +2558,7 @@ void Session::photoApplyFields(
 	}
 	photo->setRemoteLocation(dc, access, fileReference);
 	photo->date = date;
-	photo->hasSticker = hasSticker;
+	photo->setHasAttachedStickers(hasStickers);
 	photo->updateImages(
 		inlineThumbnailBytes,
 		small,
@@ -3325,6 +3411,15 @@ void Session::unregisterContactItem(
 		session().changes().peerUpdated(
 			contact,
 			PeerUpdate::Flag::CanShareContact);
+	}
+}
+
+void Session::documentMessageRemoved(not_null<DocumentData*> document) {
+	if (_documentItems.find(document) != _documentItems.end()) {
+		return;
+	}
+	if (document->loading()) {
+		document->cancel();
 	}
 }
 

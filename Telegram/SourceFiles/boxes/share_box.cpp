@@ -22,7 +22,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/input_fields.h"
 #include "ui/widgets/dropdown_menu.h"
 #include "ui/wrap/slide_wrap.h"
-#include "ui/text_options.h"
+#include "ui/text/text_options.h"
 #include "chat_helpers/message_field.h"
 #include "chat_helpers/send_context_menu.h"
 #include "history/history.h"
@@ -41,7 +41,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/application.h"
 #include "styles/style_layers.h"
 #include "styles/style_boxes.h"
-#include "styles/style_history.h"
+#include "styles/style_chat.h"
 #include "styles/style_info.h"
 
 class ShareBox::Inner final : public Ui::RpWidget, private base::Subscriber {
@@ -179,7 +179,7 @@ ShareBox::ShareBox(
 , _hasMediaMessages(hasMedia)
 , _select(
 	this,
-	st::contactsMultiSelect,
+	st::defaultMultiSelect,
 	tr::lng_participant_filter())
 , _comment(
 	this,
@@ -531,9 +531,6 @@ bool ShareBox::showMenu(not_null<Ui::IconButton*> button) {
 		}
 		if (cForwardAlbumsAsIs() || !cForwardGrouped()) {
 			_menu->addAction(tr::ktg_forward_menu_group_all_media(tr::now), [=] {
-				if (cForwardQuoted()) {
-					cSetForwardQuoted(false);
-				}
 				cSetForwardAlbumsAsIs(false);
 				cSetForwardGrouped(true);
 				updateAdditionalTitle();
@@ -541,9 +538,6 @@ bool ShareBox::showMenu(not_null<Ui::IconButton*> button) {
 		}
 		if (cForwardAlbumsAsIs() || cForwardGrouped()) {
 			_menu->addAction(tr::ktg_forward_menu_separate_messages(tr::now), [=] {
-				if (cForwardQuoted()) {
-					cSetForwardQuoted(false);
-				}
 				cSetForwardAlbumsAsIs(false);
 				cSetForwardGrouped(false);
 				updateAdditionalTitle();
@@ -572,7 +566,7 @@ void ShareBox::updateAdditionalTitle() {
 			: tr::ktg_forward_subtitle_uncaptioned(tr::now));
 	}
 
-	if (!cForwardQuoted() && _hasMediaMessages && !cForwardAlbumsAsIs()) {
+	if (_hasMediaMessages && !cForwardAlbumsAsIs()) {
 		if (!result.isEmpty()) {
 			result += ", ";
 		}

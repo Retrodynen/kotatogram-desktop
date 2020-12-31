@@ -30,6 +30,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/wrap/vertical_layout.h"
 #include "ui/wrap/slide_wrap.h"
 #include "ui/image/image_prepare.h"
+#include "ui/cached_round_corners.h"
 #include "window/section_widget.h"
 #include "window/window_session_controller.h"
 #include "boxes/peer_list_controllers.h"
@@ -37,7 +38,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/settings_privacy_security.h"
 #include "facades.h"
 #include "app.h"
-#include "styles/style_history.h"
+#include "styles/style_chat.h"
 #include "styles/style_boxes.h"
 #include "styles/style_settings.h"
 
@@ -50,8 +51,7 @@ class BlockPeerBoxController
 	: public ChatsListBoxController
 	, private base::Subscriber {
 public:
-	explicit BlockPeerBoxController(
-		not_null<Window::SessionNavigation*> navigation);
+	explicit BlockPeerBoxController(not_null<Main::Session*> session);
 
 	Main::Session &session() const override;
 	void rowClicked(not_null<PeerListRow*> row) override;
@@ -71,19 +71,19 @@ protected:
 private:
 	void updateIsBlocked(not_null<PeerListRow*> row, PeerData *peer) const;
 
-	const not_null<Window::SessionNavigation*> _navigation;
+	const not_null<Main::Session*> _session;
 	Fn<void(not_null<PeerData*> peer)> _blockPeerCallback;
 
 };
 
 BlockPeerBoxController::BlockPeerBoxController(
-	not_null<Window::SessionNavigation*> navigation)
-: ChatsListBoxController(navigation)
-, _navigation(navigation) {
+	not_null<Main::Session*> session)
+: ChatsListBoxController(session)
+, _session(session) {
 }
 
 Main::Session &BlockPeerBoxController::session() const {
-	return _navigation->session();
+	return *_session;
 }
 
 void BlockPeerBoxController::prepareViewHook() {
@@ -293,7 +293,8 @@ void BlockedBoxController::handleBlockedEvent(not_null<PeerData*> user) {
 
 void BlockedBoxController::BlockNewPeer(
 		not_null<Window::SessionController*> window) {
-	auto controller = std::make_unique<BlockPeerBoxController>(window);
+	auto controller = std::make_unique<BlockPeerBoxController>(
+		&window->session());
 	auto initBox = [=, controller = controller.get()](
 			not_null<PeerListBox*> box) {
 		controller->setBlockPeerCallback([=](not_null<PeerData*> peer) {
@@ -861,7 +862,7 @@ void ForwardsPrivacyController::PaintForwardedTooltip(
 	const auto arrowLeft = arrowLeft2;
 	const auto geometry = rect.translated(left, top);
 
-	App::roundRect(p, geometry, st::toastBg, ImageRoundRadius::Small);
+	Ui::FillRoundRect(p, geometry, st::toastBg, ImageRoundRadius::Small);
 
 	p.setFont(font);
 	p.setPen(st::toastFg);

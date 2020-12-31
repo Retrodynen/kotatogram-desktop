@@ -27,7 +27,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_keys.h"
 #include "layout.h"
 #include "app.h"
-#include "styles/style_history.h"
+#include "styles/style_chat.h"
 
 namespace HistoryView {
 namespace {
@@ -119,6 +119,14 @@ bool SimpleElementDelegate::elementHideReply(not_null<const Element*> view) {
 bool SimpleElementDelegate::elementShownUnread(
 		not_null<const Element*> view) {
 	return view->data()->unread();
+}
+
+void SimpleElementDelegate::elementSendBotCommand(
+	const QString &command,
+	const FullMsgId &context) {
+}
+
+void SimpleElementDelegate::elementHandleViaClick(not_null<UserData*> bot) {
 }
 
 TextSelection UnshiftItemSelection(
@@ -497,6 +505,8 @@ void Element::recountAttachToPreviousInBlocks() {
 	if (isHidden() || data()->isEmpty()) {
 		if (const auto next = nextDisplayedInBlocks()) {
 			next->recountAttachToPreviousInBlocks();
+		} else if (const auto previous = previousDisplayedInBlocks()) {
+			previous->setAttachToNext(false);
 		}
 		return;
 	}

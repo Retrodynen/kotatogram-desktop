@@ -17,11 +17,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/input_fields.h"
 #include "ui/emoji_config.h"
 #include "ui/ui_utility.h"
+#include "ui/cached_round_corners.h"
 #include "platform/platform_specific.h"
 #include "core/application.h"
 #include "base/event_filter.h"
 #include "main/main_session.h"
-#include "app.h"
 #include "styles/style_chat_helpers.h"
 
 #include <QtWidgets/QApplication>
@@ -171,10 +171,8 @@ bool SuggestionsWidget::eventHook(QEvent *e) {
 }
 
 void SuggestionsWidget::scrollByWheelEvent(not_null<QWheelEvent*> e) {
-	const auto horizontal = (e->angleDelta().x() != 0)
-		|| (e->orientation() == Qt::Horizontal);
-	const auto vertical = (e->angleDelta().y() != 0)
-		|| (e->orientation() == Qt::Vertical);
+	const auto horizontal = (e->angleDelta().x() != 0);
+	const auto vertical = (e->angleDelta().y() != 0);
 	const auto current = scrollCurrent();
 	const auto scroll = [&] {
 		if (horizontal) {
@@ -218,11 +216,11 @@ void SuggestionsWidget::paintEvent(QPaintEvent *e) {
 		? _pressed
 		: _selectedAnimation.value(_selected);
 	if (selected > -1.) {
-		App::roundRect(
+		Ui::FillRoundRect(
 			p,
 			QRect(selected * _oneWidth, 0, _oneWidth, _oneWidth),
 			st::emojiPanHover,
-			StickerHoverCorners);
+			Ui::StickerHoverCorners);
 	}
 
 	for (auto i = from; i != till; ++i) {

@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "data/data_types.h"
 #include "data/data_peer.h"
+#include "data/data_drafts.h"
 #include "dialogs/dialogs_entry.h"
 #include "history/view/history_view_send_action.h"
 #include "base/observer.h"
@@ -112,6 +113,8 @@ public:
 					std::forward<Args>(args)...)).get());
 	}
 	void destroyMessage(not_null<HistoryItem*> item);
+
+	void unpinAllMessages();
 
 	HistoryItem *addNewMessage(
 		const MTPMessage &msg,
@@ -300,31 +303,48 @@ public:
 	void eraseFromUnreadMentions(MsgId msgId);
 	void addUnreadMentionsSlice(const MTPmessages_Messages &result);
 
+	Data::Draft *draft(Data::DraftKey key) const;
+	void setDraft(Data::DraftKey key, std::unique_ptr<Data::Draft> &&draft);
+	void clearDraft(Data::DraftKey key);
+
+	[[nodiscard]] const Data::HistoryDrafts &draftsMap() const;
+	void setDraftsMap(Data::HistoryDrafts &&map);
+
 	Data::Draft *localDraft() const {
-		return _localDraft.get();
+		return draft(Data::DraftKey::Local());
+	}
+	Data::Draft *localEditDraft() const {
+		return draft(Data::DraftKey::LocalEdit());
 	}
 	Data::Draft *cloudDraft() const {
-		return _cloudDraft.get();
+		return draft(Data::DraftKey::Cloud());
 	}
-	Data::Draft *editDraft() const {
-		return _editDraft.get();
+	void setLocalDraft(std::unique_ptr<Data::Draft> &&draft) {
+		setDraft(Data::DraftKey::Local(), std::move(draft));
 	}
-	void setLocalDraft(std::unique_ptr<Data::Draft> &&draft);
-	void takeLocalDraft(History *from);
-	void setCloudDraft(std::unique_ptr<Data::Draft> &&draft);
+	void setLocalEditDraft(std::unique_ptr<Data::Draft> &&draft) {
+		setDraft(Data::DraftKey::LocalEdit(), std::move(draft));
+	}
+	void setCloudDraft(std::unique_ptr<Data::Draft> &&draft) {
+		setDraft(Data::DraftKey::Cloud(), std::move(draft));
+	}
+	void clearLocalDraft() {
+		clearDraft(Data::DraftKey::Local());
+	}
+	void clearCloudDraft() {
+		clearDraft(Data::DraftKey::Cloud());
+	}
+	void clearLocalEditDraft() {
+		clearDraft(Data::DraftKey::LocalEdit());
+	}
+	void clearDrafts();
 	Data::Draft *createCloudDraft(const Data::Draft *fromDraft);
 	bool skipCloudDraft(const QString &text, MsgId replyTo, TimeId date) const;
 	void setSentDraftText(const QString &text);
 	void clearSentDraftText(const QString &text);
-	void setEditDraft(std::unique_ptr<Data::Draft> &&draft);
-	void clearLocalDraft();
-	void clearCloudDraft();
+	void takeLocalDraft(not_null<History*> from);
 	void applyCloudDraft();
-	void clearEditDraft();
 	void draftSavedToCloud();
-	Data::Draft *draft() {
-		return _editDraft ? editDraft() : localDraft();
-	}
 
 	const MessageIdsList &forwardDraft() const {
 		return _forwardDraft;
@@ -365,6 +385,8 @@ public:
 	// find the correct scrollTopItem and scrollTopOffset using given top
 	// of the displayed window relative to the history start coordinate
 	void countScrollState(int top);
+
+	[[nodiscard]] std::pair<Element*, int> findItemAndOffset(int top) const;
 
 	MsgId nextNonHistoryEntryId();
 
@@ -422,7 +444,7 @@ private:
 	void getNextScrollTopItem(HistoryBlock *block, int32 i);
 
 	// helper method for countScrollState(int top)
-	void countScrollTopItem(int top);
+	[[nodiscard]] Element *findScrollTopItem(int top) const;
 
 	// this method just removes a block from the blocks list
 	// when the last item from this block was detached and
@@ -556,8 +578,7 @@ private:
 	};
 	std::unique_ptr<BuildingBlock> _buildingFrontBlock;
 
-	std::unique_ptr<Data::Draft> _localDraft, _cloudDraft;
-	std::unique_ptr<Data::Draft> _editDraft;
+	Data::HistoryDrafts _drafts;
 	std::optional<QString> _lastSentDraftText;
 	TimeId _lastSentDraftTime = 0;
 	MessageIdsList _forwardDraft;

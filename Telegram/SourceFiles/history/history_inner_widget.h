@@ -92,6 +92,10 @@ public:
 		const TextWithEntities &text,
 		Fn<void()> hiddenCallback);
 	bool elementIsGifPaused();
+	void elementSendBotCommand(
+		const QString &command,
+		const FullMsgId &context);
+	void elementHandleViaClick(not_null<UserData*> bot);
 
 	void updateBotInfo(bool recount = true);
 
@@ -110,6 +114,10 @@ public:
 	// -1 if should not be visible, -2 if bad history()
 	int itemTop(const HistoryItem *item) const;
 	int itemTop(const Element *view) const;
+
+	// Returns (view, offset-from-top).
+	[[nodiscard]] std::pair<Element*, int> findViewForPinnedTracking(
+		int top) const;
 
 	void notifyIsBotChanged();
 	void notifyMigrateUpdated();

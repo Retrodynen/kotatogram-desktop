@@ -18,6 +18,9 @@ extern "C" {
 #define signals public
 } // extern "C"
 
+// present starting with gtk 3.0, we can build with gtk2 headers
+typedef struct _GtkAppChooser GtkAppChooser;
+
 #endif // !TDESKTOP_DISABLE_GTK_INTEGRATION
 
 #if defined DESKTOP_APP_USE_PACKAGED && !defined DESKTOP_APP_USE_PACKAGED_LAZY
@@ -172,6 +175,12 @@ extern f_gtk_image_new gtk_image_new;
 typedef void (*f_gtk_image_set_from_pixbuf)(GtkImage *image, GdkPixbuf *pixbuf);
 extern f_gtk_image_set_from_pixbuf gtk_image_set_from_pixbuf;
 
+typedef GtkWidget* (*f_gtk_app_chooser_dialog_new)(GtkWindow *parent, GtkDialogFlags flags, GFile *file);
+extern f_gtk_app_chooser_dialog_new gtk_app_chooser_dialog_new;
+
+typedef GAppInfo* (*f_gtk_app_chooser_get_app_info)(GtkAppChooser *self);
+extern f_gtk_app_chooser_get_app_info gtk_app_chooser_get_app_info;
+
 typedef void (*f_gdk_set_allowed_backends)(const gchar *backends);
 extern f_gdk_set_allowed_backends gdk_set_allowed_backends;
 
@@ -226,6 +235,22 @@ inline GtkWindow *gtk_window_cast(Object *obj) {
 	return g_type_cic_helper<GtkWindow, Object>(obj, gtk_window_get_type());
 }
 
+typedef GType (*f_gtk_widget_get_type)(void) G_GNUC_CONST;
+extern f_gtk_widget_get_type gtk_widget_get_type;
+
+template <typename Object>
+inline GtkWidget *gtk_widget_cast(Object *obj) {
+	return g_type_cic_helper<GtkWidget, Object>(obj, gtk_widget_get_type());
+}
+
+typedef GType (*f_gtk_app_chooser_get_type)(void) G_GNUC_CONST;
+extern f_gtk_app_chooser_get_type gtk_app_chooser_get_type;
+
+template <typename Object>
+inline GtkAppChooser *gtk_app_chooser_cast(Object *obj) {
+	return g_type_cic_helper<GtkAppChooser, Object>(obj, gtk_app_chooser_get_type());
+}
+
 template <typename Object>
 inline bool g_type_cit_helper(Object *instance, GType iface_type) {
 	if (!instance) return false;
@@ -277,6 +302,7 @@ inline QString GtkSetting(const gchar *propertyName) {
 	gchararray value = GtkSetting<gchararray>(propertyName);
 	QString str = QString::fromUtf8(value);
 	g_free(value);
+	DEBUG_LOG(("Getting GTK setting, %1: '%2'").arg(propertyName).arg(str));
 	return str;
 }
 #endif // !TDESKTOP_DISABLE_GTK_INTEGRATION

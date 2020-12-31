@@ -7,6 +7,8 @@ https://github.com/kotatogram/kotatogram-desktop/blob/dev/LEGAL
 */
 #include "kotato/settings.h"
 
+#include "base/platform/base_platform_info.h"
+
 bool gKotatoFirstRun = true;
 
 QString gMainFont, gSemiboldFont, gMonospaceFont;
@@ -15,7 +17,7 @@ bool gSemiboldFontIsBold = false;
 #ifdef DESKTOP_APP_USE_PACKAGED_FONTS
 bool gUseSystemFont = true;
 #else
-bool gUseSystemFont = false;
+bool gUseSystemFont = Platform::IsLinux();
 #endif
 
 bool gUseOriginalMetrics = false;
@@ -132,7 +134,7 @@ bool UseNativeDecorations() {
 
 rpl::variable<int> gRecentStickersLimit = 20;
 void SetRecentStickersLimit(int limit) {
-	if (limit >= 0 || limit <= 200) {
+	if (limit >= 0 && limit <= 200) {
 		gRecentStickersLimit = limit;
 	}
 }
@@ -145,7 +147,8 @@ rpl::producer<int> RecentStickersLimitChanges() {
 
 int gUserpicCornersType = 3;
 bool gShowTopBarUserpic = false;
-bool gDisableTrayCounter = false;
+bool gGtkIntegration = false;
+bool gDisableTrayCounter = Platform::IsLinux();
 bool gUseTelegramPanelIcon = false;
 int gCustomAppIcon = 0;
 

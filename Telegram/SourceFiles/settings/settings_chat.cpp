@@ -23,6 +23,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/labels.h"
+#include "ui/chat/attach/attach_extensions.h"
 #include "ui/layers/generic_box.h"
 #include "ui/effects/radial_animation.h"
 #include "ui/toast/toast.h"
@@ -600,10 +601,9 @@ void BackgroundRow::updateImage() {
 void ChooseFromFile(
 		not_null<Window::SessionController*> controller,
 		not_null<QWidget*> parent) {
-	const auto &imgExtensions = cImgExtensions();
 	auto filters = QStringList(
 		qsl("Theme files (*.tdesktop-theme *.tdesktop-palette *")
-		+ imgExtensions.join(qsl(" *"))
+		+ Ui::ImageExtensions().join(qsl(" *"))
 		+ qsl(")"));
 	filters.push_back(FileDialog::AllFilesFilter());
 	const auto callback = crl::guard(controller, [=](
@@ -1415,6 +1415,20 @@ void SetupSupport(
 	)->checkedChanges(
 	) | rpl::start_with_next([=](bool checked) {
 		controller->session().settings().setSupportTemplatesAutocomplete(
+			checked);
+		controller->session().saveSettingsDelayed();
+	}, inner->lifetime());
+
+	inner->add(
+		object_ptr<Ui::Checkbox>(
+			inner,
+			"Send all messages without sound",
+			controller->session().settings().supportAllSilent(),
+			st::settingsCheckbox),
+		st::settingsSendTypePadding
+	)->checkedChanges(
+	) | rpl::start_with_next([=](bool checked) {
+		controller->session().settings().setSupportAllSilent(
 			checked);
 		controller->session().saveSettingsDelayed();
 	}, inner->lifetime());

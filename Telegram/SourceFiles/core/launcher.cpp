@@ -10,12 +10,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "platform/platform_launcher.h"
 #include "platform/platform_specific.h"
 #include "base/platform/base_platform_info.h"
+#include "base/platform/base_platform_file_utilities.h"
 #include "ui/main_queue_processor.h"
 #include "ui/ui_utility.h"
 #include "core/crash_reports.h"
 #include "core/update_checker.h"
 #include "core/sandbox.h"
 #include "base/concurrent_timer.h"
+#include "kotato/json_settings.h"
 
 namespace Core {
 namespace {
@@ -303,10 +305,6 @@ void Launcher::init() {
 
 	QApplication::setApplicationName(qsl("KotatogramDesktop"));
 
-#if defined Q_OS_UNIX && !defined Q_OS_MAC && QT_VERSION >= QT_VERSION_CHECK(5, 7, 0)
-	QApplication::setDesktopFileName(Platform::GetLauncherFilename());
-#endif
-
 #ifndef OS_MAC_OLD
 	QApplication::setAttribute(Qt::AA_DisableHighDpiScaling, true);
 #endif // OS_MAC_OLD
@@ -333,6 +331,7 @@ int Launcher::exec() {
 
 	// Must be started before Platform is started.
 	Logs::start(this);
+	Kotato::JsonSettings::Start();
 
 	// Must be started before Sandbox is created.
 	Platform::start();
@@ -353,7 +352,7 @@ int Launcher::exec() {
 	if (!UpdaterDisabled() && cRestartingUpdate()) {
 		DEBUG_LOG(("Sandbox Info: executing updater to install update."));
 		if (!launchUpdater(UpdaterLaunch::PerformUpdate)) {
-			psDeleteDir(cWorkingDir() + qsl("tupdates/temp"));
+			base::Platform::DeleteDirectory(cWorkingDir() + qsl("tupdates/temp"));
 		}
 	} else if (cRestarting()) {
 		DEBUG_LOG(("Sandbox Info: executing Kotatogram because of restart."));
@@ -362,6 +361,7 @@ int Launcher::exec() {
 
 	CrashReports::Finish();
 	Platform::finish();
+	Kotato::JsonSettings::Finish();
 	Logs::finish();
 
 	return result;
@@ -413,7 +413,7 @@ bool Launcher::customWorkingDir() const {
 }
 
 void Launcher::prepareSettings() {
-	auto path = Platform::CurrentExecutablePath(_argc, _argv);
+	auto path = base::Platform::CurrentExecutablePath(_argc, _argv);
 	LOG(("Executable path before check: %1").arg(path));
 	if (!path.isEmpty()) {
 		auto info = QFileInfo(path);

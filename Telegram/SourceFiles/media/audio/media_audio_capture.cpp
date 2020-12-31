@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "media/audio/media_audio_capture.h"
 
 #include "media/audio/media_audio_ffmpeg_loader.h"
+#include "ffmpeg/ffmpeg_utility.h"
 #include "base/timer.h"
 
 #include <al.h>
@@ -62,7 +63,7 @@ private:
 	Fn<void()> _error;
 
 	struct Private;
-	std::unique_ptr<Private> d;
+	const std::unique_ptr<Private> d;
 	base::Timer _timer;
 	QByteArray _captured;
 
@@ -95,6 +96,9 @@ void Instance::start() {
 				_updates.fire_error({});
 			});
 		});
+		crl::on_main(this, [=] {
+			_started = true;
+		});
 	});
 }
 
@@ -102,11 +106,13 @@ void Instance::stop(Fn<void(Result&&)> callback) {
 	InvokeQueued(_inner.get(), [=] {
 		if (!callback) {
 			_inner->stop();
+			crl::on_main(this, [=] { _started = false; });
 			return;
 		}
 		_inner->stop([=](Result &&result) {
 			crl::on_main([=, result = std::move(result)]() mutable {
 				callback(std::move(result));
+				_started = false;
 			});
 		});
 	});
@@ -247,13 +253,14 @@ void Instance::Inner::start(Fn<void(Update)> updated, Fn<void()> error) {
 
 	// Create encoding context
 
-	d->ioBuffer = (uchar*)av_malloc(AVBlockSize);
+	d->ioBuffer = (uchar*)av_malloc(FFmpeg::kAVBlockSize);
 
-	d->ioContext = avio_alloc_context(d->ioBuffer, AVBlockSize, 1, static_cast<void*>(d.get()), &Private::_read_data, &Private::_write_data, &Private::_seek_data);
+	d->ioContext = avio_alloc_context(d->ioBuffer, FFmpeg::kAVBlockSize, 1, static_cast<void*>(d.get()), &Private::_read_data, &Private::_write_data, &Private::_seek_data);
 	int res = 0;
 	char err[AV_ERROR_MAX_STRING_SIZE] = { 0 };
-	AVOutputFormat *fmt = 0;
-	while ((fmt = av_oformat_next(fmt))) {
+	const AVOutputFormat *fmt = nullptr;
+	void *i = nullptr;
+	while ((fmt = av_muxer_iterate(&i))) {
 		if (fmt->name == qstr("opus")) {
 			break;
 		}
@@ -264,7 +271,7 @@ void Instance::Inner::start(Fn<void(Update)> updated, Fn<void()> error) {
 		return;
 	}
 
-	if ((res = avformat_alloc_output_context2(&d->fmtContext, fmt, 0, 0)) < 0) {
+	if ((res = avformat_alloc_output_context2(&d->fmtContext, (AVOutputFormat*)fmt, 0, 0)) < 0) {
 		LOG(("Audio Error: Unable to avformat_alloc_output_context2 for capture, error %1, %2").arg(res).arg(av_make_error_string(err, sizeof(err), res)));
 		fail();
 		return;

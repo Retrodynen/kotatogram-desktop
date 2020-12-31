@@ -7,10 +7,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include "base/platform/base_platform_info.h"
 #include "window/themes/window_themes_embedded.h"
 #include "window/window_controls_layout.h"
+#include "ui/chat/attach/attach_send_files_way.h"
 
-enum class SendFilesWay;
 enum class RectPart;
 
 namespace Ui {
@@ -217,6 +218,24 @@ public:
 	void setCallAudioDuckingEnabled(bool value) {
 		_callAudioDuckingEnabled = value;
 	}
+	[[nodiscard]] bool groupCallPushToTalk() const {
+		return _groupCallPushToTalk;
+	}
+	void setGroupCallPushToTalk(bool value) {
+		_groupCallPushToTalk = value;
+	}
+	[[nodiscard]] QByteArray groupCallPushToTalkShortcut() const {
+		return _groupCallPushToTalkShortcut;
+	}
+	void setGroupCallPushToTalkShortcut(const QByteArray &serialized) {
+		_groupCallPushToTalkShortcut = serialized;
+	}
+	[[nodiscard]] crl::time groupCallPushToTalkDelay() const {
+		return _groupCallPushToTalkDelay;
+	}
+	void setGroupCallPushToTalkDelay(crl::time delay) {
+		_groupCallPushToTalkDelay = delay;
+	}
 	[[nodiscard]] Window::Theme::AccentColors &themesAccentColors() {
 		return _themesAccentColors;
 	}
@@ -229,10 +248,10 @@ public:
 	[[nodiscard]] bool lastSeenWarningSeen() const {
 		return _lastSeenWarningSeen;
 	}
-	void setSendFilesWay(SendFilesWay way) {
+	void setSendFilesWay(Ui::SendFilesWay way) {
 		_sendFilesWay = way;
 	}
-	[[nodiscard]] SendFilesWay sendFilesWay() const {
+	[[nodiscard]] Ui::SendFilesWay sendFilesWay() const {
 		return _sendFilesWay;
 	}
 	void setSendSubmitWay(Ui::InputSubmitSettings value) {
@@ -254,6 +273,12 @@ public:
 	}
 	void setExeLaunchWarning(bool warning) {
 		_exeLaunchWarning = warning;
+	}
+	[[nodiscard]] bool ipRevealWarning() const {
+		return _ipRevealWarning;
+	}
+	void setIpRevealWarning(bool warning) {
+		_ipRevealWarning = warning;
 	}
 	[[nodiscard]] bool loopAnimatedStickers() const {
 		return _loopAnimatedStickers;
@@ -494,7 +519,7 @@ private:
 	bool _desktopNotify = true;
 	bool _flashBounceNotify = true;
 	DBINotifyView _notifyView = dbinvShowPreview;
-	bool _nativeNotifications = false;
+	bool _nativeNotifications = Platform::IsLinux();
 	int _notificationsCount = 3;
 	ScreenCorner _notificationsCorner = ScreenCorner::BottomRight;
 	bool _includeMutedCounter = true;
@@ -507,12 +532,16 @@ private:
 	int _callOutputVolume = 100;
 	int _callInputVolume = 100;
 	bool _callAudioDuckingEnabled = true;
+	bool _groupCallPushToTalk = false;
+	QByteArray _groupCallPushToTalkShortcut;
+	crl::time _groupCallPushToTalkDelay = 20;
 	Window::Theme::AccentColors _themesAccentColors;
 	bool _lastSeenWarningSeen = false;
-	SendFilesWay _sendFilesWay;
+	Ui::SendFilesWay _sendFilesWay;
 	Ui::InputSubmitSettings _sendSubmitWay;
 	base::flat_map<QString, QString> _soundOverrides;
 	bool _exeLaunchWarning = true;
+	bool _ipRevealWarning = true;
 	bool _loopAnimatedStickers = true;
 	rpl::variable<bool> _largeEmoji = true;
 	rpl::variable<bool> _replaceEmoji = true;
@@ -533,7 +562,7 @@ private:
 	rpl::variable<float64> _dialogsWidthRatio; // per-window
 	rpl::variable<int> _thirdColumnWidth = kDefaultThirdColumnWidth; // p-w
 	bool _notifyFromAll = true;
-	rpl::variable<bool> _nativeWindowFrame = false;
+	rpl::variable<bool> _nativeWindowFrame = Platform::IsLinux();
 	rpl::variable<std::optional<bool>> _systemDarkMode = std::nullopt;
 	rpl::variable<bool> _systemDarkModeEnabled = false;
 	rpl::variable<Window::ControlsLayout> _windowControlsLayout;

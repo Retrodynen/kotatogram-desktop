@@ -22,12 +22,6 @@ class PlainShadow;
 
 namespace Window {
 
-// If we toggle frameless window hint in maximized window, and
-// show it back too quickly, the mouse position inside the window
-// won't be correct (from Qt-s point of view) until we Alt-Tab from
-// that window. If we show the window back with this delay it works.
-inline constexpr auto kShowAfterWindowFlagChangeDelay = crl::time(1000);
-
 class TitleWidgetQt : public TitleWidget {
 public:
 	TitleWidgetQt(QWidget *parent);
@@ -39,7 +33,7 @@ protected:
 	void paintEvent(QPaintEvent *e) override;
 	void resizeEvent(QResizeEvent *e) override;
 	void mousePressEvent(QMouseEvent *e) override;
-	void mouseDoubleClickEvent(QMouseEvent *e) override;
+	void mouseReleaseEvent(QMouseEvent *e) override;
 
 	bool eventFilter(QObject *obj, QEvent *e) override;
 
@@ -73,6 +67,9 @@ private:
 	bool _windowWasFrameless = false;
 	bool _cursorOverriden = false;
 	bool _extentsSet = false;
+	bool _pressedForMove = false;
+	crl::time _pressedForMoveTime = 0;
+	QPoint _pressedForMovePoint;
 
 };
 

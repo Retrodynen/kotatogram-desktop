@@ -7,7 +7,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/admin_log/history_admin_log_inner.h"
 
-#include "styles/style_history.h"
 #include "history/history.h"
 #include "history/view/media/history_view_media.h"
 #include "history/view/media/history_view_web_page.h"
@@ -26,6 +25,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "mainwidget.h"
 #include "core/application.h"
 #include "apiwrap.h"
+#include "api/api_attached_stickers.h"
 #include "layout.h"
 #include "window/window_session_controller.h"
 #include "main/main_session.h"
@@ -50,6 +50,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_user.h"
 #include "facades.h"
 #include "app.h"
+#include "styles/style_chat.h"
 
 #include <QtWidgets/QApplication>
 #include <QtGui/QClipboard>
@@ -600,6 +601,14 @@ bool InnerWidget::elementShownUnread(not_null<const Element*> view) {
 	return view->data()->unread();
 }
 
+void InnerWidget::elementSendBotCommand(
+	const QString &command,
+	const FullMsgId &context) {
+}
+
+void InnerWidget::elementHandleViaClick(not_null<UserData*> bot) {
+}
+
 void InnerWidget::saveState(not_null<SectionMemento*> memento) {
 	memento->setFilter(std::move(_filter));
 	memento->setAdmins(std::move(_admins));
@@ -1073,6 +1082,16 @@ void InnerWidget::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			_menu->addAction(tr::lng_context_copy_image(tr::now), [=] {
 				copyContextImage(photo);
 			});
+			if (photo->hasAttachedStickers()) {
+				const auto controller = _controller;
+				auto callback = [=] {
+					auto &attached = session().api().attachedStickers();
+					attached.requestAttachedStickerSets(controller, photo);
+				};
+				_menu->addAction(
+					tr::lng_context_attached_stickers(tr::now),
+					std::move(callback));
+			}
 		} else {
 			auto document = lnkDocument->document();
 			if (document->loading()) {
@@ -1105,6 +1124,16 @@ void InnerWidget::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 				_menu->addAction(lnkIsVideo ? tr::lng_context_save_video(tr::now) : (lnkIsVoice ?  tr::lng_context_save_audio(tr::now) : (lnkIsAudio ?  tr::lng_context_save_audio_file(tr::now) :  tr::lng_context_save_file(tr::now))), App::LambdaDelayed(st::defaultDropdownMenu.menu.ripple.hideDuration, this, [this, document] {
 					saveDocumentToFile(document);
 				}));
+				if (document->hasAttachedStickers()) {
+					const auto controller = _controller;
+					auto callback = [=, doc = document] {
+						auto &attached = session().api().attachedStickers();
+						attached.requestAttachedStickerSets(controller, doc);
+					};
+					_menu->addAction(
+						tr::lng_context_attached_stickers(tr::now),
+						std::move(callback));
+				}
 			}
 		}
 	} else if (lnkPeer) { // suggest to block
@@ -1535,13 +1564,13 @@ void InnerWidget::mouseActionFinish(const QPoint &screenPos, Qt::MouseButton but
 	_mouseSelectType = TextSelectType::Letters;
 	//_widget->noSelectingScroll(); // TODO
 
-#if defined Q_OS_UNIX && !defined Q_OS_MAC
-	if (_selectedItem && _selectedText.from != _selectedText.to) {
+	if (QGuiApplication::clipboard()->supportsSelection()
+		&& _selectedItem
+		&& _selectedText.from != _selectedText.to) {
 		TextUtilities::SetClipboardText(
 			_selectedItem->selectedText(_selectedText),
 			QClipboard::Selection);
 	}
-#endif // Q_OS_UNIX && !Q_OS_MAC
 }
 
 void InnerWidget::updateSelected() {

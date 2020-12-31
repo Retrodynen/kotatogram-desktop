@@ -357,11 +357,10 @@ object_ptr<Ui::RpWidget> DetailsFiller::setupInfo() {
 			return false;
 		});
 		
-		if (user->isBot()) {
-			addInfoLine(tr::lng_info_about_label(), AboutValue(user));
-		} else {
-			addInfoLine(tr::lng_info_bio_label(), AboutValue(user));
-		}
+		auto label = user->isBot()
+			? tr::lng_info_about_label()
+			: tr::lng_info_bio_label();
+		addInfoLine(std::move(label), AboutValue(user));
 
 		auto usernameDrawableText = UsernameValue(
 			user
@@ -646,7 +645,7 @@ void ActionsFiller::addInviteToGroupAction(
 		_wrap,
 		tr::lng_profile_invite_to_group(),
 		CanInviteBotToGroupValue(user),
-		[=] { AddBotToGroupBoxController::Start(controller, user); });
+		[=] { AddBotToGroupBoxController::Start(user); });
 }
 
 void ActionsFiller::addShareContactAction(not_null<UserData*> user) {
@@ -1024,8 +1023,10 @@ void ManageFiller::addChannelRecentActions(
 			_wrap,
 			tr::lng_manage_peer_recent_actions(),
 			rpl::single(true),
-			[=] { controller->showSection(AdminLog::SectionMemento(channel)); }
-			);
+			[=] {
+				controller->showSection(
+					std::make_shared<AdminLog::SectionMemento>(channel));
+			});
 		object_ptr<FloatingIcon>(
 			button,
 			st::infoIconRecentActions,
@@ -1138,7 +1139,7 @@ object_ptr<Ui::RpWidget> SetupChannelMembers(
 		lt_count_decimal,
 		MembersCountValue(channel) | tr::to_count());
 	auto membersCallback = [=] {
-		controller->showSection(Info::Memento(
+		controller->showSection(std::make_shared<Info::Memento>(
 			channel,
 			Section::Type::Members));
 	};

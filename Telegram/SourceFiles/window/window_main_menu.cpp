@@ -19,7 +19,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/wrap/slide_wrap.h"
 #include "ui/wrap/vertical_layout.h"
 #include "ui/text/text_utilities.h"
-#include "ui/text_options.h"
+#include "ui/text/text_options.h"
 #include "ui/special_buttons.h"
 #include "ui/empty_userpic.h"
 #include "dialogs/dialogs_layout.h"
@@ -770,7 +770,7 @@ void MainMenu::rebuildAccounts() {
 				}
 				auto activate = [=, guard = _accountSwitchGuard.make_guard()]{
 					if (guard) {
-						Core::App().domain().activate(account);
+						Core::App().domain().maybeActivate(account);
 					}
 				};
 				base::call_delayed(
@@ -827,7 +827,9 @@ not_null<Ui::SlideWrap<Ui::RippleButton>*> MainMenu::setupAddAccount(
 
 	const auto add = [=](MTP::Environment environment) {
 		const auto sure = [=] {
-			Core::App().domain().addActivated(environment);
+			Core::App().preventOrInvoke([=] {
+				Core::App().domain().addActivated(environment);
+			});
 		};
 		if (_accountsCount >= Main::Domain::kMaxAccountsWarn) {
 			Ui::show(
@@ -884,10 +886,7 @@ void MainMenu::refreshMenu() {
 			App::wnd()->onShowNewChannel();
 		}, &st::mainMenuNewChannel, &st::mainMenuNewChannelOver);
 		_menu->addAction(tr::lng_menu_contacts(tr::now), [=] {
-			Ui::show(Box<PeerListBox>(std::make_unique<ContactsBoxController>(controller), [](not_null<PeerListBox*> box) {
-				box->addButton(tr::lng_close(), [box] { box->closeBox(); });
-				box->addLeftButton(tr::lng_profile_add_contact(), [] { App::wnd()->onShowAddContact(); });
-			}));
+			Ui::show(PrepareContactsBox(controller));
 		}, &st::mainMenuContacts, &st::mainMenuContactsOver);
 		if (_controller->session().serverConfig().phoneCallsEnabled.current()) {
 			_menu->addAction(tr::lng_menu_calls(tr::now), [=] {

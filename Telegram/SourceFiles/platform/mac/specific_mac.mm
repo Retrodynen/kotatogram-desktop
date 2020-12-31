@@ -36,20 +36,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <mach-o/dyld.h>
 #include <AVFoundation/AVFoundation.h>
 
-namespace {
-
-QStringList _initLogs;
-
-};
-
-namespace {
-
-QRect _monitorRect;
-crl::time _monitorLastGot = 0;
-
-} // namespace
-
 QRect psDesktopRect() {
+	static QRect _monitorRect;
+	static crl::time _monitorLastGot = 0;
 	auto tnow = crl::now();
 	if (tnow > _monitorLastGot + 1000 || tnow < _monitorLastGot) {
 		_monitorLastGot = tnow;
@@ -63,18 +52,6 @@ void psWriteDump() {
 	double v = objc_appkitVersion();
 	CrashReports::dump() << "OS-Version: " << v;
 #endif // DESKTOP_APP_DISABLE_CRASH_REPORTS
-}
-
-void psDeleteDir(const QString &dir) {
-	objc_deleteDir(dir);
-}
-
-QStringList psInitLogs() {
-	return _initLogs;
-}
-
-void psClearInitLogs() {
-	_initLogs = QStringList();
 }
 
 void psActivateProcess(uint64 pid) {
@@ -118,24 +95,12 @@ void finish() {
 	objc_finish();
 }
 
-QString CurrentExecutablePath(int argc, char *argv[]) {
-	return NS2QString([[NSBundle mainBundle] bundlePath]);
-}
-
 QString SingleInstanceLocalServerName(const QString &hash) {
 #ifndef OS_MAC_STORE
 	return qsl("/tmp/") + hash + '-' + cGUIDStr();
 #else // OS_MAC_STORE
 	return objc_documentsPath() + hash.left(4);
 #endif // OS_MAC_STORE
-}
-
-void RemoveQuarantine(const QString &path) {
-	const auto kQuarantineAttribute = "com.apple.quarantine";
-
-	DEBUG_LOG(("Removing quarantine attribute: %1").arg(path));
-	const auto local = QFile::encodeName(path);
-	removexattr(local.data(), kQuarantineAttribute, 0);
 }
 
 bool IsDarkMenuBar() {
@@ -234,85 +199,18 @@ bool OpenSystemSettings(SystemSettingsType type) {
 	return true;
 }
 
-// Taken from https://github.com/trueinteractions/tint/issues/53.
-std::optional<crl::time> LastUserInputTime() {
-	CFMutableDictionaryRef properties = 0;
-	CFTypeRef obj;
-	mach_port_t masterPort;
-	io_iterator_t iter;
-	io_registry_entry_t curObj;
-
-	IOMasterPort(MACH_PORT_NULL, &masterPort);
-
-	/* Get IOHIDSystem */
-	IOServiceGetMatchingServices(masterPort, IOServiceMatching("IOHIDSystem"), &iter);
-	if (iter == 0) {
-		return std::nullopt;
-	} else {
-		curObj = IOIteratorNext(iter);
-	}
-	if (IORegistryEntryCreateCFProperties(curObj, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS && properties != NULL) {
-		obj = CFDictionaryGetValue(properties, CFSTR("HIDIdleTime"));
-		CFRetain(obj);
-	} else {
-		return std::nullopt;
-	}
-
-	uint64 err = ~0L, idleTime = err;
-	if (obj) {
-		CFTypeID type = CFGetTypeID(obj);
-
-		if (type == CFDataGetTypeID()) {
-			CFDataGetBytes((CFDataRef) obj, CFRangeMake(0, sizeof(idleTime)), (UInt8*)&idleTime);
-		} else if (type == CFNumberGetTypeID()) {
-			CFNumberGetValue((CFNumberRef)obj, kCFNumberSInt64Type, &idleTime);
-		} else {
-			// error
-		}
-
-		CFRelease(obj);
-
-		if (idleTime != err) {
-			idleTime /= 1000000; // return as ms
-		}
-	} else {
-		// error
-	}
-
-	CFRelease((CFTypeRef)properties);
-	IOObjectRelease(curObj);
-	IOObjectRelease(iter);
-	if (idleTime == err) {
-		return std::nullopt;
-	}
-	return (crl::now() - static_cast<crl::time>(idleTime));
-}
-
 void IgnoreApplicationActivationRightNow() {
 	objc_ignoreApplicationActivationRightNow();
 }
 
 Window::ControlsLayout WindowControlsLayout() {
-	Window::ControlsLayout controls;
-	controls.left = {
-		Window::Control::Close,
-		Window::Control::Minimize,
-		Window::Control::Maximize,
+	return Window::ControlsLayout{
+		.left = {
+			Window::Control::Close,
+			Window::Control::Minimize,
+			Window::Control::Maximize,
+		}
 	};
-
-	return controls;
-}
-
-NSImage *ToNSImage(const QPixmap &pixmap) {
-    if (pixmap.isNull())
-        return 0;
-    CGImageRef cgimage = pixmap.toImage().toCGImage();
-    NSBitmapImageRep *bitmapRep = [[NSBitmapImageRep alloc] initWithCGImage:cgimage];
-    NSImage *image = [[NSImage alloc] init];
-    [image addRepresentation:bitmapRep];
-    [bitmapRep release];
-    CFRelease(cgimage);
-    return image;
 }
 
 } // namespace Platform
@@ -333,10 +231,6 @@ void psDownloadPathEnableAccess() {
 
 QByteArray psDownloadPathBookmark(const QString &path) {
 	return objc_downloadPathBookmark(path);
-}
-
-QByteArray psPathBookmark(const QString &path) {
-	return objc_pathBookmark(path);
 }
 
 bool psLaunchMaps(const Data::LocationPoint &point) {

@@ -132,7 +132,7 @@ public:
 	Main::Session &session() const;
 
 	virtual void showSection(
-		SectionMemento &&memento,
+		std::shared_ptr<SectionMemento> memento,
 		const SectionShow &params = SectionShow()) = 0;
 	virtual void showBackFromStack(
 		const SectionShow &params = SectionShow()) = 0;
@@ -231,6 +231,7 @@ public:
 	SessionController(
 		not_null<Main::Session*> session,
 		not_null<Controller*> window);
+	~SessionController();
 
 	[[nodiscard]] Controller &window() const {
 		return *_window;
@@ -296,8 +297,12 @@ public:
 	void resizeForThirdSection();
 	void closeThirdSection();
 
+	void startOrJoinGroupCall(
+		not_null<PeerData*> peer,
+		bool confirmedLeaveOther = false);
+
 	void showSection(
-		SectionMemento &&memento,
+		std::shared_ptr<SectionMemento> memento,
 		const SectionShow &params = SectionShow()) override;
 	void showBackFromStack(
 		const SectionShow &params = SectionShow()) override;
@@ -350,13 +355,9 @@ public:
 	void reloadFiltersMenu();
 	[[nodiscard]] rpl::producer<> filtersMenuChanged() const;
 
-	void requestAttachedStickerSets(not_null<PhotoData*> photo);
-
 	rpl::lifetime &lifetime() {
 		return _lifetime;
 	}
-
-	~SessionController();
 
 private:
 	void init();
@@ -409,8 +410,6 @@ private:
 	rpl::variable<Data::Folder*> _openedFolder;
 
 	rpl::event_stream<> _filtersMenuChanged;
-
-	mtpRequestId _attachedStickerSetsRequestId = 0;
 
 	rpl::lifetime _lifetime;
 

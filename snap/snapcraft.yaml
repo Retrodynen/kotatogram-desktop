@@ -18,8 +18,10 @@ apps:
     common-id: io.github.kotatogram
     desktop: usr/share/applications/kotatogram-desktop_kotatogram-desktop.desktop
     environment:
-      # Use GTK3 cursor theme, icon theme and open/save file dialogs.
-      QT_QPA_PLATFORMTHEME: gtk3
+      # Tell glib to use portals on file associations handling.
+      GTK_USE_PORTAL: 1
+      # Use sandboxed ibus api
+      IBUS_USE_PORTAL: 1
     plugs:
       - alsa
       - audio-playback
@@ -66,9 +68,6 @@ parts:
     source: .
     source-type: git
     parse-info: [usr/share/metainfo/kotatogram-desktop_kotatogram-desktop.appdata.xml]
-    build-environment:
-      - LD_LIBRARY_PATH: $SNAPCRAFT_STAGE/usr/lib
-      - tg_owt_DIR: $SNAPCRAFT_STAGE/tg_owt
     build-packages:
       - python
       - qtbase5-private-dev
@@ -78,24 +77,27 @@ parts:
       - liblzma-dev
       - libopus-dev
       - libpulse-dev
-      - libqt5svg5-dev
       - libqt5waylandclient5-dev
       - libssl-dev
       - libxcb1-dev
+      - libxcb-keysyms1-dev
+      - libxcb-record0-dev
       - libxcb-screensaver0-dev
       - zlib1g-dev
     stage-packages:
       - qt5-image-formats-plugins
       - qtwayland5
       - libasound2
+      - libglib2.0-0
       - libgtk-3-0
       - liblzma5
       - libopus0
       - libpulse0
-      - libqt5svg5
       - libqt5waylandclient5
       - libssl1.1
       - libxcb1
+      - libxcb-keysyms1
+      - libxcb-record0
       - libxcb-screensaver0
       - zlib1g
     cmake-parameters:
@@ -105,17 +107,23 @@ parts:
       - -DTDESKTOP_API_HASH=d524b414d21f4d37f08684c1df41ac9c
       - -DDESKTOP_APP_USE_PACKAGED_LAZY=ON
       - -DDESKTOP_APP_QTWAYLANDCLIENT_PRIVATE_HEADERS=$SNAPCRAFT_STAGE/usr/include/$SNAPCRAFT_ARCH_TRIPLET/qt5/QtWaylandClient/5.12.8
-      - -DTDESKTOP_LAUNCHER_BASENAME=telegram-desktop_telegram-desktop
+      - -DTDESKTOP_LAUNCHER_BASENAME=kotatogram-desktop_kotatogram-desktop
     override-pull: |
       snapcraftctl pull
 
       version="$(git describe --tags | sed -r 's,^k([0-9]\.[0-9]),\1,')"
       snapcraftctl set-version "$version"
 
-      sed -i 's|^Icon=.*|Icon=/usr/share/icons/hicolor/512x512/apps/kotatogram.png|g' lib/xdg/kotatogramdesktop.desktop
+      sed -i 's|^Icon=.*|Icon=${SNAP}/meta/gui/icon.png|g' lib/xdg/kotatogramdesktop.desktop
+    override-build: |
+      snapcraftctl build
+      rm -rf "$SNAPCRAFT_PART_INSTALL/usr/share/icons"
+    stage:
+      - -./usr/lib/$SNAPCRAFT_ARCH_TRIPLET/libjpeg.so.8.2.2
     after:
       - desktop-qt5
       - ffmpeg
+      - mozjpeg
       - openal
       - qtwayland
       - webrtc
@@ -144,17 +152,19 @@ parts:
       - locales-all
       - xdg-user-dirs
       - fcitx-frontend-qt5
+    stage:
+      - -./usr/lib/$SNAPCRAFT_ARCH_TRIPLET/libjpeg.so.8.2.2
+    after:
+      - mozjpeg
 
   qt5-xdgdesktopportal-platform:
     plugin: nil
     stage-packages:
       - qt5-xdgdesktopportal-platformtheme
-
-  # Qt checks that ibus-daemon binary is present, otherwise doesn't work
-  ibus:
-    plugin: nil
-    stage-packages:
-      - ibus
+    stage:
+      - -./usr/lib/$SNAPCRAFT_ARCH_TRIPLET/libjpeg.so.8.2.2
+    after:
+      - mozjpeg
 
   ffmpeg:
     plugin: nil
@@ -170,22 +180,39 @@ parts:
       - libavutil56
       - libswresample3
       - libswscale5
+    stage:
+      - -./usr/lib/$SNAPCRAFT_ARCH_TRIPLET/libjpeg.so.8.2.2
+    after:
+      - mozjpeg
+
+  mozjpeg:
+    source: https://github.com/mozilla/mozjpeg.git
+    source-depth: 1
+    source-tag: v4.0.1-rc2
+    plugin: cmake
+    cmake-parameters:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/usr
+      - -DENABLE_STATIC=OFF
+      - -DWITH_JPEG8=ON
+      - -DPNG_SUPPORTED=OFF
+    prime:
+      - -./usr/bin
+      - -./usr/include
+      - -./usr/lib/$SNAPCRAFT_ARCH_TRIPLET/pkgconfig
+      - -./usr/share
 
   openal:
     source: https://github.com/kcat/openal-soft.git
     source-depth: 1
-    source-tag: openal-soft-1.20.1
+    source-tag: openal-soft-1.21.0
     plugin: cmake
     build-packages:
       - libasound2-dev
       - libpulse-dev
-      - libsndio-dev
-      - portaudio19-dev
     stage-packages:
       - libasound2
       - libpulse0
-      - libportaudio2
-      - libsndio7.0
     cmake-parameters:
       - -DCMAKE_BUILD_TYPE=Release
       - -DCMAKE_INSTALL_PREFIX=/usr
@@ -195,8 +222,8 @@ parts:
       - -DALSOFT_CONFIG=OFF
     prime:
       - -./usr/include
-      - -./usr/lib/cmake
-      - -./usr/lib/pkgconfig
+      - -./usr/lib/$SNAPCRAFT_ARCH_TRIPLET/cmake
+      - -./usr/lib/$SNAPCRAFT_ARCH_TRIPLET/pkgconfig
 
   qtwayland:
     source: https://github.com/qt/qtwayland.git
@@ -215,22 +242,22 @@ parts:
   webrtc:
     source: https://github.com/desktop-app/tg_owt.git
     source-depth: 1
+    source-commit: 75ac66937341d8a9207375aaee79b4bdc500146c
     plugin: cmake
     build-packages:
       - yasm
-      - libjpeg8-dev
       - libopus-dev
       - libssl-dev
     stage-packages:
-      - libjpeg8
       - libopus0
       - libssl1.1
-    override-build: |
-      cmake "$SNAPCRAFT_PART_SRC" -DCMAKE_BUILD_TYPE=Release
-      cmake --build . -- -j$(nproc)
-      cp -a . "$SNAPCRAFT_PART_INSTALL"
-    organize:
-      "*": tg_owt/
+    cmake-parameters:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/usr
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DJPEG_LIBRARY_RELEASE=$SNAPCRAFT_STAGE/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/libjpeg.so
+      - -DJPEG_INCLUDE_DIR=$SNAPCRAFT_STAGE/usr/include
     prime: [-./*]
     after:
       - ffmpeg
+      - mozjpeg

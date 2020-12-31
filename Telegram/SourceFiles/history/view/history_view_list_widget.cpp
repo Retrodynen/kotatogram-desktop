@@ -21,11 +21,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "mainwindow.h"
 #include "mainwidget.h"
 #include "core/application.h"
+#include "core/click_handler_types.h"
 #include "apiwrap.h"
 #include "layout.h"
 #include "window/window_session_controller.h"
 #include "window/window_peer_menu.h"
 #include "main/main_session.h"
+#include "boxes/confirm_box.h"
 #include "ui/widgets/popup_menu.h"
 #include "ui/toast/toast.h"
 #include "ui/inactive_press.h"
@@ -36,8 +38,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_media_types.h"
 #include "data/data_document.h"
 #include "data/data_peer.h"
+#include "data/data_user.h"
+#include "data/data_chat.h"
+#include "data/data_channel.h"
 #include "facades.h"
-#include "styles/style_history.h"
+#include "styles/style_chat.h"
 
 #include <QtWidgets/QApplication>
 #include <QtCore/QMimeData>
@@ -292,9 +297,10 @@ ListWidget::ListWidget(
 	}, lifetime());
 
 	session().data().itemRemoved(
-	) | rpl::start_with_next(
-		[this](auto item) { itemRemoved(item); },
-		lifetime());
+	) | rpl::start_with_next([=](not_null<const HistoryItem*> item) {
+		itemRemoved(item);
+	}, lifetime());
+
 	subscribe(session().data().queryItemVisibility(), [this](const Data::Session::ItemVisibilityQuery &query) {
 		if (const auto view = viewForItem(query.item)) {
 			const auto top = itemTop(view);
@@ -388,13 +394,13 @@ std::optional<int> ListWidget::scrollTopForView(
 	return top - std::max((available - height) / 2, 0);
 }
 
-void ListWidget::animatedScrollTo(
+void ListWidget::scrollTo(
 		int scrollTop,
 		Data::MessagePosition attachPosition,
 		int delta,
 		AnimatedScroll type) {
 	_scrollToAnimation.stop();
-	if (!delta || _items.empty()) {
+	if (!delta || _items.empty() || type == AnimatedScroll::None) {
 		_delegate->listScrollTo(scrollTop);
 		return;
 	}
@@ -1266,8 +1272,9 @@ void ListWidget::elementStartStickerLoop(not_null<const Element*> view) {
 }
 
 void ListWidget::elementShowPollResults(
-	not_null<PollData*> poll,
-	FullMsgId context) {
+		not_null<PollData*> poll,
+		FullMsgId context) {
+	_controller->showPollResults(poll, context);
 }
 
 void ListWidget::elementShowTooltip(
@@ -1285,6 +1292,16 @@ bool ListWidget::elementHideReply(not_null<const Element*> view) {
 
 bool ListWidget::elementShownUnread(not_null<const Element*> view) {
 	return _delegate->listElementShownUnread(view);
+}
+
+void ListWidget::elementSendBotCommand(
+		const QString &command,
+		const FullMsgId &context) {
+	_delegate->listSendBotCommand(command, context);
+}
+
+void ListWidget::elementHandleViaClick(not_null<UserData*> bot) {
+	_delegate->listHandleViaClick(bot);
 }
 
 void ListWidget::saveState(not_null<ListMemento*> memento) {
@@ -1315,6 +1332,7 @@ void ListWidget::updateItemsGeometry() {
 				view->setDisplayDate(false);
 			} else {
 				view->setDisplayDate(true);
+				view->setAttachToPrevious(false);
 				return i;
 			}
 		}
@@ -1640,8 +1658,12 @@ TextForMimeData ListWidget::getSelectedText() const {
 	return result;
 }
 
-MessageIdsList ListWidget::getSelectedItems() const {
+MessageIdsList ListWidget::getSelectedIds() const {
 	return collectSelectedIds();
+}
+
+SelectedItems ListWidget::getSelectedItems() const {
+	return collectSelectedItems();
 }
 
 int ListWidget::findItemIndexByY(int y) const {
@@ -2178,7 +2200,14 @@ void ListWidget::mouseActionFinish(
 		mouseActionCancel();
 		ActivateClickHandler(window(), activated, {
 			button,
-			QVariant::fromValue(pressState.itemId)
+			QVariant::fromValue(ClickHandlerContext{
+				.itemId = pressState.itemId,
+				.elementDelegate = [weak = Ui::MakeWeak(this)] {
+					return weak
+						? (ElementDelegate*)weak
+						: nullptr;
+				},
+			})
 		});
 		return;
 	}
@@ -2214,16 +2243,15 @@ void ListWidget::mouseActionFinish(
 	_mouseSelectType = TextSelectType::Letters;
 	//_widget->noSelectingScroll(); // #TODO select scroll
 
-#if defined Q_OS_UNIX && !defined Q_OS_MAC
-	if (_selectedTextItem
+	if (QGuiApplication::clipboard()->supportsSelection()
+		&& _selectedTextItem
 		&& _selectedTextRange.from != _selectedTextRange.to) {
 		if (const auto view = viewForItem(_selectedTextItem)) {
 			TextUtilities::SetClipboardText(
 				view->selectedText(_selectedTextRange),
 				QClipboard::Selection);
-}
+		}
 	}
-#endif // Q_OS_UNIX && !Q_OS_MAC
 }
 
 void ListWidget::mouseActionUpdate() {
@@ -2480,7 +2508,7 @@ std::unique_ptr<QMimeData> ListWidget::prepareDrag() {
 				return true;
 			}();
 			auto items = canForwardAll
-				? getSelectedItems()
+				? collectSelectedIds()
 				: MessageIdsList();
 			if (!items.empty()) {
 				session().data().setMimeForwardIds(std::move(items));
@@ -2610,6 +2638,9 @@ void ListWidget::refreshAttachmentsFromTill(int from, int till) {
 			view = next;
 		}
 	}
+	if (till == int(_items.size())) {
+		_items.back()->setAttachToNext(false);
+	}
 	updateSize();
 }
 
@@ -2705,5 +2736,105 @@ rpl::producer<FullMsgId> ListWidget::readMessageRequested() const {
 }
 
 ListWidget::~ListWidget() = default;
+
+void ConfirmDeleteSelectedItems(not_null<ListWidget*> widget) {
+	const auto items = widget->getSelectedItems();
+	if (items.empty()) {
+		return;
+	}
+	for (const auto &item : items) {
+		if (!item.canDelete) {
+			return;
+		}
+	}
+	const auto weak = Ui::MakeWeak(widget);
+	const auto box = Ui::show(Box<DeleteMessagesBox>(
+		&widget->controller()->session(),
+		widget->getSelectedIds()));
+	box->setDeleteConfirmedCallback([=] {
+		if (const auto strong = weak.data()) {
+			strong->cancelSelection();
+		}
+	});
+}
+
+void ConfirmForwardSelectedItems(not_null<ListWidget*> widget) {
+	const auto items = widget->getSelectedItems();
+	if (items.empty()) {
+		return;
+	}
+	for (const auto &item : items) {
+		if (!item.canForward) {
+			return;
+		}
+	}
+	auto ids = widget->getSelectedIds();
+	const auto weak = Ui::MakeWeak(widget);
+	Window::ShowForwardMessagesBox(widget->controller(), std::move(ids), [=] {
+		if (const auto strong = weak.data()) {
+			strong->cancelSelection();
+		}
+	});
+}
+
+void ConfirmSendNowSelectedItems(not_null<ListWidget*> widget) {
+	const auto items = widget->getSelectedItems();
+	if (items.empty()) {
+		return;
+	}
+	const auto navigation = widget->controller();
+	const auto history = [&]() -> History* {
+		auto result = (History*)nullptr;
+		auto &data = navigation->session().data();
+		for (const auto &item : items) {
+			if (!item.canSendNow) {
+				return nullptr;
+			}
+			const auto message = data.message(item.msgId);
+			if (message) {
+				result = message->history();
+			}
+		}
+		return result;
+	}();
+	if (!history) {
+		return;
+	}
+	Window::ShowSendNowMessagesBox(
+		navigation,
+		history,
+		widget->getSelectedIds(),
+		[=] { navigation->showBackFromStack(); });
+}
+
+QString WrapBotCommandInChat(
+		not_null<PeerData*> peer,
+		const QString &command,
+		const FullMsgId &context) {
+	auto result = command;
+	if (const auto item = peer->owner().message(context)) {
+		if (const auto user = item->fromOriginal()->asUser()) {
+			return WrapBotCommandInChat(peer, command, user);
+		}
+	}
+	return result;
+}
+
+QString WrapBotCommandInChat(
+		not_null<PeerData*> peer,
+		const QString &command,
+		not_null<UserData*> bot) {
+	if (!bot->isBot() || bot->username.isEmpty()) {
+		return command;
+	}
+	const auto botStatus = peer->isChat()
+		? peer->asChat()->botStatus
+		: peer->isMegagroup()
+		? peer->asChannel()->mgInfo->botStatus
+		: -1;
+	return ((command.indexOf('@') < 2) && (botStatus == 0 || botStatus == 2))
+		? command + '@' + bot->username
+		: command;
+}
 
 } // namespace HistoryView

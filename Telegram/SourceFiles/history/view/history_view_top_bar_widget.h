@@ -43,11 +43,8 @@ public:
 		int canForwardCount = 0;
 		int canSendNowCount = 0;
 	};
-	enum class Section {
-		History,
-		Scheduled,
-		Replies,
-	};
+	using ActiveChat = Dialogs::EntryState;
+	using Section = ActiveChat::Section;
 
 	TopBarWidget(
 		QWidget *parent,
@@ -65,8 +62,7 @@ public:
 	void setAnimatingMode(bool enabled);
 
 	void setActiveChat(
-		Dialogs::Key chat,
-		Section section,
+		ActiveChat activeChat,
 		SendActionPainter *sendAction);
 	void setCustomTitle(const QString &title);
 
@@ -99,8 +95,10 @@ private:
 	void selectedShowCallback();
 	void updateInfoToggleActive();
 
-	void onCall();
-	void onSearch();
+	void call();
+	void groupCall();
+	void startGroupCall(not_null<ChannelData*> megagroup, bool confirmed);
+	void search();
 	void showMenu();
 	void toggleInfoSection();
 
@@ -130,8 +128,7 @@ private:
 	void updateUnreadBadge();
 
 	const not_null<Window::SessionController*> _controller;
-	Dialogs::Key _activeChat;
-	Section _section = Section::History;
+	ActiveChat _activeChat;
 	QString _customTitleText;
 
 	int _selectedCount = 0;
@@ -149,6 +146,7 @@ private:
 	object_ptr<Ui::AbstractButton> _info = { nullptr };
 
 	object_ptr<Ui::IconButton> _call;
+	object_ptr<Ui::IconButton> _groupCall;
 	object_ptr<Ui::IconButton> _search;
 	object_ptr<Ui::IconButton> _infoToggle;
 	object_ptr<Ui::IconButton> _menuToggle;
