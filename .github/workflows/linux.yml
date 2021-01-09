@@ -73,7 +73,7 @@ jobs:
           - "TDESKTOP_DISABLE_GTK_INTEGRATION"
 
     env:
-      UPLOAD_ARTIFACT: "true"
+      UPLOAD_ARTIFACT: "false"
 
     steps:
       - name: Get repository name.
@@ -104,7 +104,10 @@ jobs:
           fi
 
           ./configure.sh \
-          -D CMAKE_CXX_FLAGS="-s" \
+          -D CMAKE_C_FLAGS="-Werror" \
+          -D CMAKE_CXX_FLAGS="-Werror" \
+          -D CMAKE_EXE_LINKER_FLAGS="-s" \
+          -D TDESKTOP_API_TEST=ON \
           -D DESKTOP_APP_USE_PACKAGED=OFF \
           -D TDESKTOP_API_ID=${API_ID} \
           -D TDESKTOP_API_HASH=${API_HASH} \
